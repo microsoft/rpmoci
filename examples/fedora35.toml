@@ -1,0 +1,11 @@
+[contents]
+repositories = ["https://fedora.mirrorservice.org/fedora/linux/releases/35/Everything/x86_64/os/"]
+gpgkeys = [
+  "https://raw.githubusercontent.com/xsuchy/distribution-gpg-keys/main/keys/fedora/RPM-GPG-KEY-fedora-35-primary"
+]
+packages = [
+  "tini",
+]
+
+[image]
+entrypoint = [ "tini", "--" ]

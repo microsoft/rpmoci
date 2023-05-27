@@ -1,0 +1,6 @@
+[contents]
+repositories = [ "https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64"]
+gpgkeys = [
+  "https://raw.githubusercontent.com/microsoft/CBL-Mariner/2.0/SPECS/mariner-repos/MICROSOFT-RPM-GPG-KEY"
+]
+packages = [ "tini-static" ]
