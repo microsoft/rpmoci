@@ -1,0 +1,7 @@
+[contents]
+repositories = ["mariner-official-base"]
+packages = ["skopeo-1.*", "out/rpmoci-*.rpm", "core-packages-container"]
+docs = true
+
+[image]
+cmd = ["bash"]
