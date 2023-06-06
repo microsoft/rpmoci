@@ -1,5 +1,5 @@
 # rpmoci
-*rpmoci is a nascent container build tool from Azure for Operators. It's currently used in a small number of internal of container images builds.*
+*rpmoci is a nascent container build tool from Azure for Operators. It's currently used in a small number of internal container images builds.*
 
 rpmoci builds OCI container images from RPM packages, using [DNF](https://github.com/rpm-software-management/dnf). It's essentially a containerization wrapper around `dnf install --installroot=/some/rootfs PACKAGE [PACAKGE ...]`.
 
