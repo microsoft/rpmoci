@@ -13,6 +13,7 @@
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use openssl::sha::Sha256;
+use std::fmt::Write as _;
 use std::io::{Result, Write};
 
 /// Wraps a writer and calculates the sha256 digest of data written to the inner writer
@@ -31,7 +32,10 @@ impl<W> Sha256Writer<W> {
 
     /// Return the hex encoded sha256 digest of the written data, and the underlying writer
     pub(crate) fn finish(self) -> (String, W) {
-        let digest = hex::encode(self.sha.finish());
+        let mut digest = String::new();
+        for byte in self.sha.finish().iter() {
+            write!(digest, "{:02x}", byte).unwrap();
+        }
         (digest, self.writer)
     }
 }
