@@ -1,0 +1,28 @@
+# Generates a source tarball, including depedencies, and uploads it to GitHub releases
+name: release
+
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Make source tarball
+        run: |
+          mkdir -p .cargo
+          touch sdist.tar.gz
+          cargo vendor >> .cargo/config.toml
+          version=$(cargo pkgid -p rpmoci | cut -d '#' -f 2)
+          tar --transform="s+^\./+rpmoci-$version/+" --exclude='.git' --exclude='target' --exclude='sdist.tar.gz' -czf sdist.tar.gz .
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            sdist.tar.gz
