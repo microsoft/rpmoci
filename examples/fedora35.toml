@@ -9,3 +9,6 @@ packages = [
 
 [image]
 entrypoint = [ "tini", "--" ]
+
+[image.envs]
+RUST_LOG = "info"

@@ -143,8 +143,8 @@ This image can then be copied using OCI tools such as skopeo or oras. E.g to cop
 ```bash
 $ skopeo copy oci:foo:bar docker-daemon:foo:bar
 Getting image source signatures
-Copying blob 77b582c1f09c done  
-Copying config 577bea913f done  
+Copying blob 77b582c1f09c done
+Copying config 577bea913f done
 Writing manifest to image destination
 Storing signatures
 ```
@@ -166,7 +166,14 @@ packages = [
 entrypoint = ["tini", "--"]
 cmd = [ "foo" ]
 exposed_ports = ["8080/tcp"]
+
+[image.envs]
+RUST_BACKTRACE = "1"
+RUST_LOG = "hyper=info"
 ```
+
+The `config` section of the OCI image spec, linked above, maps to the image section in `rpmoci.toml`.
+For example to specify image labels you can use the `image.labels` section.
 
 The PATH environment variable is set to `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` by default, but can be overridden via the `image.envs` field.
 
@@ -239,4 +246,3 @@ to run it, or build an RPM using [cargo-generate-rpm](https://github.com/cat-in-
 ```bash
 cargo generate-rpm
 ```
-
