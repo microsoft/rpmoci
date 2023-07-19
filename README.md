@@ -173,7 +173,7 @@ RUST_LOG = "hyper=info"
 ```
 
 The `config` section of the OCI image spec, linked above, maps to the image section in `rpmoci.toml`.
-For example to specify image labels you can use the `image.labels` section.
+For example to specify image labels you can use the `image.labels` section and to specify image environment variables use `image.envs`.
 
 The PATH environment variable is set to `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` by default, but can be overridden via the `image.envs` field.
 
