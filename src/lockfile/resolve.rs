@@ -14,6 +14,7 @@
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use std::collections::HashMap;
 use std::env;
+use std::ops::Deref;
 
 use anyhow::{Context, Result};
 use log::debug;
@@ -90,13 +91,40 @@ impl Lockfile {
     }
 }
 
+/// A wrapper around the dnf.Base object which ensures that plugins are unloaded
+pub(crate) struct Base<'a> {
+    value: &'a PyAny,
+}
+
+impl<'a> Deref for Base<'a> {
+    type Target = &'a PyAny;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<'a> Drop for Base<'a> {
+    fn drop(&mut self) {
+        // Unload plugins as otherwise dnf can raise an error when we call setup_base again
+        // self.value.call_method0("unload_plugins").unwrap();
+        // To support Azure Linx (Mariner), don't use unload_plugins
+        // as it's not present in dnf 4.8.0
+        self.value
+            .getattr("_plugins")
+            .unwrap()
+            .call_method0("_unload")
+            .unwrap();
+    }
+}
+
 /// Initialize the dnf.Base object with the repositories configured in the rpmoci.toml
 /// The Base object also initializes and configures any system defined plugins
 pub(crate) fn setup_base<'a>(
     py: Python<'a>,
     repositories: &[Repository],
     gpgkeys: &[Url],
-) -> Result<&'a PyAny> {
+) -> Result<Base<'a>> {
     let dnf = PyModule::import(py, "dnf")?;
     let base = dnf.getattr("Base")?.call0()?;
     let conf = base.getattr("conf")?;
@@ -186,7 +214,7 @@ pub(crate) fn setup_base<'a>(
         (),
         Some([("load_system_repo", false)].into_py_dict(py)),
     )?;
-    Ok(base)
+    Ok(Base { value: base })
 }
 
 fn default_repo_options() -> HashMap<String, String> {
