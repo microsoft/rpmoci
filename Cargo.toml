@@ -18,7 +18,7 @@ glob = "0.3.0"
 log = "0.4.19"
 oci-spec = { version = "0.6.1", features = ["image"], default-features = false }
 openssl = "0.10.55"
-pyo3 = { version = "0.18.0", features = ["auto-initialize"] }
+pyo3 = { version = "0.19.1", features = ["auto-initialize"] }
 serde = { version = "1.0.139", features = ["derive"] }
 serde_json = "1.0.102"
 tar = "0.4.38"

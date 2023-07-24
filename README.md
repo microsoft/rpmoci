@@ -13,6 +13,7 @@ The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/a
 
 *rpmoci can loosely be considered a wrapper around `dnf install --installroot=/path/to/rootfs`."*
 *If you don't want to use rpmoci but like the idea of creating small RPM-based container images then you may be able to just use `dnf install --installroot` and [umoci](https://umo.ci/), which is how rpmoci started out.*
+
 ## Installing
 rpmoci isn't published to a widely accessible location yet so you'll need build it from source with `cargo build`
 
@@ -70,6 +71,7 @@ options = { includepkgs = "foo,bar" }
 By default the `gpgcheck` and `sslverify` are enabled - these can be disabled via the `options` field.
 
 All system repos are ignored, other than those explicitly specified via repo id.
+dnf plugins are supported, but rpmoci doesn't support specifying plugin configuration.
 
 #### Package configuration
 

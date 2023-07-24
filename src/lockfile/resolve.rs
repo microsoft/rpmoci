@@ -91,6 +91,7 @@ impl Lockfile {
 }
 
 /// Initialize the dnf.Base object with the repositories configured in the rpmoci.toml
+/// The Base object also initializes and configures any system defined plugins
 pub(crate) fn setup_base<'a>(
     py: Python<'a>,
     repositories: &[Repository],
@@ -99,6 +100,9 @@ pub(crate) fn setup_base<'a>(
     let dnf = PyModule::import(py, "dnf")?;
     let base = dnf.getattr("Base")?.call0()?;
     let conf = base.getattr("conf")?;
+
+    base.call_method0("init_plugins")?;
+    base.call_method0("pre_configure_plugins")?;
 
     // If any repositories were specified by repoid, enable them first
     let existing_repos = repositories
@@ -174,6 +178,8 @@ pub(crate) fn setup_base<'a>(
             }
         }
     }
+
+    base.call_method0("configure_plugins")?;
 
     base.call_method(
         "fill_sack",
