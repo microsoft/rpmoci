@@ -18,7 +18,12 @@ use anyhow::{bail, Context, Result};
 use flate2::{write::GzEncoder, Compression};
 use oci_spec::image::{Descriptor, DescriptorBuilder, MediaType};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, os::unix::prelude::FileTypeExt, path::Path};
+use std::{
+    fs,
+    io::Write,
+    os::unix::prelude::{FileTypeExt, OsStrExt},
+    path::Path,
+};
 use tempfile::NamedTempFile;
 use walkdir::WalkDir;
 
@@ -142,6 +147,75 @@ fn init_dir(layout: impl AsRef<Path>) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+// https://mgorny.pl/articles/portability-of-tar-features.html#id25
+const PAX_SCHILY_XATTR: &[u8; 13] = b"SCHILY.xattr.";
+
+// workaround https://github.com/alexcrichton/tar-rs/issues/102 so that security capabilities are preserved
+fn append_dir_all_with_xattrs(
+    tar: &mut tar::Builder<impl Write>,
+    src_path: impl AsRef<Path>,
+) -> Result<()> {
+    let src_path = src_path.as_ref();
+    for entry in WalkDir::new(src_path)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let meta = entry.metadata()?;
+        // skip sockets as tar-rs errors when trying to archive them.
+        // For comparison, umoci also errors, whereas docker skips them
+        if meta.file_type().is_socket() {
+            continue;
+        }
+
+        let rel_path = pathdiff::diff_paths(entry.path(), src_path).unwrap();
+        if entry.file_type().is_dir() || entry.file_type().is_symlink() {
+            if rel_path != Path::new("") {
+                tar.append_path_with_name(entry.path(), rel_path)?;
+            }
+        } else if entry.file_type().is_file() {
+            // Add header for extended attributes, if present
+            let xattrs = xattr::list(entry.path())?;
+            let mut pax_header = tar::Header::new_ustar();
+            let mut pax_data = Vec::new();
+            for key in xattrs {
+                let value = xattr::get(entry.path(), &key)?.unwrap_or_default();
+
+                // each entry is "<len> <key>=<value>\n": https://www.ibm.com/docs/en/zos/2.3.0?topic=SSLTBW_2.3.0/com.ibm.zos.v2r3.bpxa500/paxex.html
+                let data_len = PAX_SCHILY_XATTR.len() + key.as_bytes().len() + value.len() + 3;
+                // Calculate the total length, including the length of the length field
+                let mut len_len = 1;
+                while data_len + len_len >= 10usize.pow(len_len.try_into().unwrap()) {
+                    len_len += 1;
+                }
+                write!(pax_data, "{} ", data_len + len_len)?;
+                pax_data.write_all(PAX_SCHILY_XATTR)?;
+                pax_data.write_all(key.as_bytes())?;
+                pax_data.write_all("=".as_bytes())?;
+                pax_data.write_all(&value)?;
+                pax_data.write_all("\n".as_bytes())?;
+            }
+            if !pax_data.is_empty() {
+                pax_header.set_size(pax_data.len() as u64);
+                pax_header.set_entry_type(tar::EntryType::XHeader);
+                pax_header.set_cksum();
+                tar.append(&pax_header, &*pax_data)?;
+            }
+
+            let mut header = tar::Header::new_gnu();
+            header.set_size(meta.len());
+            header.set_metadata(&meta);
+            tar.append_data(
+                &mut header,
+                rel_path,
+                &mut std::fs::File::open(entry.path())?,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Create a root filesystem image layer from a directory on disk.
 /// The blob is written to the specified OCI layour directory.
 ///
@@ -150,18 +224,6 @@ pub(crate) fn create_image_layer(
     rootfs_path: impl AsRef<Path>,
     layout_path: impl AsRef<Path>,
 ) -> Result<(Descriptor, String)> {
-    // Remove sockets from the rootfs, otherwise tarring will fail.
-    // Why? dnf and gpg seem to create sockets in cache.
-    // tar-rs provides no way of ignoring these errors.
-    // for comparison, umoci also fails when sockets are present but docker just ignores them
-    for entry in WalkDir::new(rootfs_path.as_ref())
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.metadata().map(|m| m.file_type().is_socket()).ok() == Some(true))
-    {
-        std::fs::remove_file(entry.path())?;
-    }
-
     // We need to determine the sha256 hash of the compressed and uncompresssed blob.
     // The former for the blob id and the latter for the rootfs diff id which we need to include in the config blob.
     let enc = GzEncoder::new(
@@ -170,7 +232,7 @@ pub(crate) fn create_image_layer(
     );
     let mut tar = tar::Builder::new(Sha256Writer::new(enc));
     tar.follow_symlinks(false);
-    tar.append_dir_all(".", rootfs_path.as_ref())
+    append_dir_all_with_xattrs(&mut tar, rootfs_path.as_ref())
         .context("failed to archive root filesystem")?;
     let (diff_id_sha, gz) = tar.into_inner()?.finish();
     let (blob_digest, mut tmp_file) = gz.finish().context("failed to finish enc")?.finish();

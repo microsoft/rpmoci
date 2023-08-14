@@ -28,7 +28,7 @@ jobs:
       image: mcr.microsoft.com/cbl-mariner/base/core:2.0
     steps:
       - name: Install dependencies
-        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf
+        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf moby-cli skopeo
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -36,7 +36,7 @@ jobs:
           toolchain: stable
           override: true
       - name: Run cargo test
-        run: cargo test
+        run: cargo test --features test-docker
 
   cargo-deny:
     runs-on: ubuntu-22.04
