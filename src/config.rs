@@ -16,7 +16,7 @@
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use anyhow::Result;
 use oci_spec::{
-    image::{Arch, ConfigBuilder, ImageConfigurationBuilder, Os},
+    image::{Arch, ConfigBuilder, ImageConfiguration, ImageConfigurationBuilder, Os},
     OciSpecError,
 };
 use serde::{Deserialize, Serialize};
@@ -130,8 +130,11 @@ impl Repository {
     }
 }
 
-impl TryFrom<&Config> for oci_spec::image::ImageConfiguration {
-    fn try_from(cfg: &Config) -> Result<Self, Self::Error> {
+impl ImageConfig {
+    pub(crate) fn to_oci_image_configuration(
+        &self,
+        cli_labels: HashMap<String, String>,
+    ) -> Result<ImageConfiguration, OciSpecError> {
         let ImageConfig {
             user,
             exposed_ports,
@@ -144,8 +147,10 @@ impl TryFrom<&Config> for oci_spec::image::ImageConfiguration {
             stopsignal,
             author,
             ..
-        } = &cfg.image;
+        } = &self;
         let mut builder = ConfigBuilder::default();
+        let mut merged_labels = labels.clone();
+        merged_labels.extend(cli_labels);
 
         // default the PATH variable to /usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
         let mut envs = envs.clone();
@@ -184,12 +189,14 @@ impl TryFrom<&Config> for oci_spec::image::ImageConfiguration {
         }
         builder.build()
     }
-
-    type Error = OciSpecError;
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use crate::config::ImageConfig;
+
     use super::Config;
 
     #[test]
@@ -266,29 +273,25 @@ mod tests {
 
     #[test]
     fn path_env_defaulting() {
-        let config_with_path = r#"[contents]
-        packages = ["foo"]
-        repositories = ["https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64"]
-        [image]
+        let config_with_path = r#"
         envs = { PATH = "/usr/bin"}
         "#;
         let config: oci_spec::image::ImageConfiguration =
-            (&toml::from_str::<Config>(config_with_path).unwrap())
-                .try_into()
+            toml::from_str::<ImageConfig>(config_with_path)
+                .unwrap()
+                .to_oci_image_configuration(HashMap::new())
                 .unwrap();
         let envs = config.config().as_ref().unwrap().env().as_ref().unwrap();
         assert!(envs.iter().any(|e| e == "PATH=/usr/bin"));
         assert_eq!(envs.len(), 1);
 
-        let config_without_path = r#"[contents]
-        packages = ["foo"]
-        repositories = ["https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64"]
-        [image]
+        let config_without_path = r#"
         envs = { FOO = "bar"}
         "#;
         let config: oci_spec::image::ImageConfiguration =
-            (&toml::from_str::<Config>(config_without_path).unwrap())
-                .try_into()
+            toml::from_str::<ImageConfig>(config_without_path)
+                .unwrap()
+                .to_oci_image_configuration(HashMap::new())
                 .unwrap();
         let envs = config.config().as_ref().unwrap().env().as_ref().unwrap();
         assert!(envs

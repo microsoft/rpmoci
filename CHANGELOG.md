@@ -2,6 +2,10 @@
 ### Added
 ### Fixed
 
+## 0.2.8 - 2023-08-15
+
+### Fixed
+Set a sensible default for the PATH variable correctly.
 
 ## 0.2.7 - 2023-08-15
 
