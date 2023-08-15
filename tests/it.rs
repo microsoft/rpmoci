@@ -182,3 +182,41 @@ fn test_simple_vendor() {
     eprintln!("stderr: {}", stderr);
     assert!(output.status.success());
 }
+
+#[cfg(feature = "test-docker")]
+#[test]
+fn test_capabilities() {
+    let root = setup_test("capabilities");
+    let status = Command::new("sudo")
+        .arg(EXE)
+        .arg("build")
+        .arg("--image=capabilities")
+        .arg("--tag=test")
+        .current_dir(&root)
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = Command::new("sudo")
+        .arg("skopeo")
+        .arg("copy")
+        .arg("oci:capabilities:test")
+        .arg("docker-daemon:capabilities:test")
+        .current_dir(&root)
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let output = Command::new("docker")
+        .arg("run")
+        .arg("capabilities:test")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .contains("cap_net_admin=ep"));
+    assert!(status.success());
+}
