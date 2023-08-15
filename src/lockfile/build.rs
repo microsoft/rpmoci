@@ -19,15 +19,10 @@ use std::{fs, path::PathBuf, process::Command};
 
 use anyhow::{bail, Context, Result};
 use glob::glob;
-use oci_spec::image::{
-    Arch, ConfigBuilder, ImageConfiguration, ImageConfigurationBuilder, ImageIndex,
-    ImageManifestBuilder, MediaType, Os, RootFsBuilder,
-};
-use oci_spec::OciSpecError;
+use oci_spec::image::{ImageIndex, ImageManifestBuilder, MediaType, RootFsBuilder};
 use tempfile::TempDir;
 
 use super::Lockfile;
-use crate::config::ImageConfig;
 use crate::write;
 use crate::{config::Config, oci};
 
@@ -126,7 +121,7 @@ impl Lockfile {
 
         // Create the image configuration blob
         write::ok("Writing", "image configuration blob")?;
-        let mut image_config = build_image_configuration(cfg, labels)?;
+        let mut image_config = cfg.image.to_oci_image_configuration(labels)?;
         let rootfs = RootFsBuilder::default().diff_ids(vec![diff_id]).build()?;
         image_config.set_rootfs(rootfs);
         let config = oci::write_json_blob(&image_config, MediaType::ImageConfig, image)?;
@@ -186,57 +181,4 @@ impl Lockfile {
         ))?;
         Ok(())
     }
-}
-
-fn build_image_configuration(
-    cfg: &Config,
-    cli_labels: HashMap<String, String>,
-) -> Result<ImageConfiguration, OciSpecError> {
-    let ImageConfig {
-        user,
-        exposed_ports,
-        envs,
-        entrypoint,
-        cmd,
-        volumes,
-        labels,
-        workingdir,
-        stopsignal,
-        author,
-        ..
-    } = &cfg.image;
-    let mut builder = ConfigBuilder::default();
-    let mut merged_labels = labels.clone();
-    merged_labels.extend(cli_labels);
-    builder = builder
-        .cmd(cmd.clone())
-        .volumes(volumes.clone())
-        .entrypoint(entrypoint.clone())
-        .env(
-            envs.iter()
-                .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<_>>(),
-        )
-        .exposed_ports(exposed_ports.clone())
-        .labels(merged_labels);
-    if let Some(user) = user {
-        builder = builder.user(user);
-    }
-    if let Some(stopsignal) = stopsignal {
-        builder = builder.stop_signal(stopsignal);
-    }
-    if let Some(workingdir) = workingdir {
-        builder = builder.working_dir(workingdir);
-    }
-    let config = builder.build()?;
-
-    let mut builder = ImageConfigurationBuilder::default()
-        .config(config)
-        .architecture(Arch::Amd64)
-        .os(Os::Linux)
-        .created(chrono::Utc::now().to_rfc3339());
-    if let Some(author) = author {
-        builder = builder.author(author);
-    }
-    builder.build()
 }
