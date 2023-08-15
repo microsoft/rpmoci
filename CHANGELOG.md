@@ -3,6 +3,11 @@
 ### Fixed
 
 
+## 0.2.7 - 2023-08-15
+
+### Fixed
+rpmoci preserves capabilities when building images.
+
 ## 0.2.6 - 2023-07-27
 
 ### Added
