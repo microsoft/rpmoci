@@ -168,40 +168,17 @@ fn append_dir_all_with_xattrs(
             continue;
         }
 
-        let rel_path = pathdiff::diff_paths(entry.path(), src_path).unwrap();
+        let rel_path = pathdiff::diff_paths(entry.path(), src_path)
+            .expect("walkdir returns path inside of search root");
+        if rel_path == Path::new("") {
+            continue;
+        }
+
         if entry.file_type().is_dir() || entry.file_type().is_symlink() {
-            if rel_path != Path::new("") {
-                tar.append_path_with_name(entry.path(), rel_path)?;
-            }
+            add_pax_extension_header(entry.path(), tar)?;
+            tar.append_path_with_name(entry.path(), rel_path)?;
         } else if entry.file_type().is_file() {
-            // Add header for extended attributes, if present
-            let xattrs = xattr::list(entry.path())?;
-            let mut pax_header = tar::Header::new_ustar();
-            let mut pax_data = Vec::new();
-            for key in xattrs {
-                let value = xattr::get(entry.path(), &key)?.unwrap_or_default();
-
-                // each entry is "<len> <key>=<value>\n": https://www.ibm.com/docs/en/zos/2.3.0?topic=SSLTBW_2.3.0/com.ibm.zos.v2r3.bpxa500/paxex.html
-                let data_len = PAX_SCHILY_XATTR.len() + key.as_bytes().len() + value.len() + 3;
-                // Calculate the total length, including the length of the length field
-                let mut len_len = 1;
-                while data_len + len_len >= 10usize.pow(len_len.try_into().unwrap()) {
-                    len_len += 1;
-                }
-                write!(pax_data, "{} ", data_len + len_len)?;
-                pax_data.write_all(PAX_SCHILY_XATTR)?;
-                pax_data.write_all(key.as_bytes())?;
-                pax_data.write_all("=".as_bytes())?;
-                pax_data.write_all(&value)?;
-                pax_data.write_all("\n".as_bytes())?;
-            }
-            if !pax_data.is_empty() {
-                pax_header.set_size(pax_data.len() as u64);
-                pax_header.set_entry_type(tar::EntryType::XHeader);
-                pax_header.set_cksum();
-                tar.append(&pax_header, &*pax_data)?;
-            }
-
+            add_pax_extension_header(entry.path(), tar)?;
             let mut header = tar::Header::new_gnu();
             header.set_size(meta.len());
             header.set_metadata(&meta);
@@ -213,6 +190,50 @@ fn append_dir_all_with_xattrs(
         }
     }
 
+    Ok(())
+}
+
+// Convert any extended attributes on the specified path to a tar PAX extension header, and add it to the tar archive
+fn add_pax_extension_header(
+    path: impl AsRef<Path>,
+    tar: &mut tar::Builder<impl Write>,
+) -> Result<(), anyhow::Error> {
+    let path = path.as_ref();
+    let xattrs = xattr::list(path)
+        .with_context(|| format!("Failed to list xattrs from `{}`", path.display()))?;
+    let mut pax_header = tar::Header::new_ustar();
+    let mut pax_data = Vec::new();
+    for key in xattrs {
+        let value = xattr::get(path, &key)
+            .with_context(|| {
+                format!(
+                    "Failed to get xattr `{}` from `{}`",
+                    key.to_string_lossy(),
+                    path.display()
+                )
+            })?
+            .unwrap_or_default();
+
+        // each entry is "<len> <key>=<value>\n": https://www.ibm.com/docs/en/zos/2.3.0?topic=SSLTBW_2.3.0/com.ibm.zos.v2r3.bpxa500/paxex.html
+        let data_len = PAX_SCHILY_XATTR.len() + key.as_bytes().len() + value.len() + 3;
+        // Calculate the total length, including the length of the length field
+        let mut len_len = 1;
+        while data_len + len_len >= 10usize.pow(len_len.try_into().unwrap()) {
+            len_len += 1;
+        }
+        write!(pax_data, "{} ", data_len + len_len)?;
+        pax_data.write_all(PAX_SCHILY_XATTR)?;
+        pax_data.write_all(key.as_bytes())?;
+        pax_data.write_all("=".as_bytes())?;
+        pax_data.write_all(&value)?;
+        pax_data.write_all("\n".as_bytes())?;
+    }
+    if !pax_data.is_empty() {
+        pax_header.set_size(pax_data.len() as u64);
+        pax_header.set_entry_type(tar::EntryType::XHeader);
+        pax_header.set_cksum();
+        tar.append(&pax_header, &*pax_data)?;
+    }
     Ok(())
 }
 
