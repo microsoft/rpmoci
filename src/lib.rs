@@ -105,7 +105,8 @@ pub fn main(command: Command) -> anyhow::Result<()> {
                     lockfile
                 }
                 (Ok(Some(lockfile)), false) => {
-                    if lockfile.is_compatible(&cfg) {
+                    // TODO improve check on whether lockfile is compatible by verifying all Requires of rpms
+                    if lockfile.all_deps_compatible(&cfg) {
                         // Compatible lockfile, use it
                         lockfile
                     } else {

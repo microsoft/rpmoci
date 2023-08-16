@@ -117,6 +117,22 @@ impl Lockfile {
         self.pkg_specs == cfg.contents.packages && self.global_key_specs == cfg.contents.gpgkeys
     }
 
+    /// Returns true if the lockfile is compatible with the specified configuration
+    /// and if all required rpm packages are included in the lockfile.
+    pub fn all_deps_compatible(&self, cfg: &Config) -> bool {
+        let required_pkgs = match Self::resolve(
+            cfg.contents.packages.clone(),
+            &cfg.contents.repositories,
+            cfg.contents.gpgkeys.clone(),
+        ) {
+            Ok(pkgs) => pkgs,
+            Err(_) => return false,
+        };
+        self.pkg_specs == cfg.contents.packages
+            && self.global_key_specs == cfg.contents.gpgkeys
+            && self.packages == required_pkgs.packages
+    }
+
     /// Write the lockfile to a file on disk
     pub fn write_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
         let mut lock = std::fs::File::create(path.as_ref())?;

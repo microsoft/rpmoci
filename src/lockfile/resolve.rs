@@ -28,7 +28,7 @@ use crate::config::Repository;
 
 impl Lockfile {
     /// Perform dependency resolution on the given package specs
-    fn resolve(
+    pub(crate) fn resolve(
         pkg_specs: Vec<String>,
         repositories: &[Repository],
         gpgkeys: Vec<Url>,
