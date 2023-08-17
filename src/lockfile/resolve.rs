@@ -12,7 +12,7 @@
 //!
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::env;
 use std::ops::Deref;
 
@@ -22,7 +22,7 @@ use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict, PyString, PyTuple};
 use url::Url;
 
-use super::{DnfOutput, Lockfile};
+use super::{DnfOutput, LocalPackage, Lockfile};
 use crate::config::Config;
 use crate::config::Repository;
 
@@ -63,6 +63,24 @@ impl Lockfile {
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
         )
+    }
+
+    /// Resolve dependencies for local packages only
+    pub fn resolve_local_rpms(cfg: &Config) -> Result<BTreeSet<LocalPackage>> {
+        // Resolve the dependencies of only the local packages
+        let local = cfg
+            .contents
+            .packages
+            .clone()
+            .into_iter()
+            .filter(|spec| spec.ends_with(".rpm"))
+            .collect::<Vec<_>>();
+        let lockfile = Self::resolve(
+            local,
+            &cfg.contents.repositories,
+            cfg.contents.gpgkeys.clone(),
+        )?;
+        Ok(lockfile.local_packages)
     }
 
     /// Create a lockfile by updating any dependencies in the current lockfile

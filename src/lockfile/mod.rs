@@ -49,7 +49,7 @@ pub struct Lockfile {
 /// with the lockfile. In particular, the local RPM's version can change without
 /// re-resolving the lockfile.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Ord)]
-struct LocalPackage {
+pub struct LocalPackage {
     /// The path to the package
     name: String,
     /// The RPM requires
@@ -119,18 +119,10 @@ impl Lockfile {
 
     /// Returns true if the lockfile is compatible with the specified configuration
     /// and if all required rpm packages are included in the lockfile.
-    pub fn all_deps_compatible(&self, cfg: &Config) -> bool {
-        let required_pkgs = match Self::resolve(
-            cfg.contents.packages.clone(),
-            &cfg.contents.repositories,
-            cfg.contents.gpgkeys.clone(),
-        ) {
-            Ok(pkgs) => pkgs,
-            Err(_) => return false,
-        };
-        self.pkg_specs == cfg.contents.packages
+    pub fn all_local_deps_compatible(&self, cfg: &Config) -> Result<bool> {
+        Ok(self.pkg_specs == cfg.contents.packages
             && self.global_key_specs == cfg.contents.gpgkeys
-            && self.packages == required_pkgs.packages
+            && self.local_packages == Self::resolve_local_rpms(cfg)?)
     }
 
     /// Write the lockfile to a file on disk
