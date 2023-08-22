@@ -86,7 +86,7 @@ impl Lockfile {
     }
 
     /// Read the dependencies of local rpms
-    pub fn read_local_rpm_deps(cfg: &Config) -> Result<BTreeSet<LocalPackage>> {
+    pub fn read_local_rpm_deps(cfg: &Config) -> Result<BTreeSet<String>> {
         let local = cfg
             .contents
             .packages
@@ -129,7 +129,7 @@ impl Lockfile {
         })
         .context("Failed to resolve dependencies with dnf")?;
 
-        let results: BTreeSet<LocalPackage> = serde_json::from_str(&output)?;
+        let results: BTreeSet<String> = serde_json::from_str(&output)?;
         Ok(results)
     }
 

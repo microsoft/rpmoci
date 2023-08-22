@@ -28,10 +28,7 @@ def query_local(local_packages):
             ts = rpm.ts()
             headers = ts.hdrFromFdno(fi)
             rpmrequires = headers[rpm.RPMTAG_REQUIRENEVRS]
-            pkg_name = headers[rpm.RPMTAG_NAME]
-        output.append({
-                "name": pkg_name,
-                "requires": [str(requires) for requires in rpmrequires],
-            }
+        output.extend(
+                [str(requires) for requires in rpmrequires],
         )
     return json.dumps(output, indent=2)
