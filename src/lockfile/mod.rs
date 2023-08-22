@@ -56,7 +56,7 @@ pub struct LocalPackage {
     requires: Vec<String>,
 }
 
-/// Format of dnf script output
+/// Format of dnf resolve script output
 #[derive(Debug, Serialize, Deserialize)]
 struct DnfOutput {
     /// The resolved remote packages
@@ -118,11 +118,36 @@ impl Lockfile {
     }
 
     /// Returns true if the lockfile is compatible with the specified configuration
-    /// and if all required rpm packages are included in the lockfile.
+    /// and if all rpm packages required by local dependencies are included in the lockfile.
     pub fn all_local_deps_compatible(&self, cfg: &Config) -> Result<bool> {
+        let local_package_deps: BTreeSet<LocalPackage> = self.local_packages.clone();
+
         Ok(self.pkg_specs == cfg.contents.packages
             && self.global_key_specs == cfg.contents.gpgkeys
-            && self.local_packages == Self::resolve_local_rpms(cfg)?)
+            // Verify dependencies of all local packages
+            && Self::read_local_rpm_deps(cfg)?.iter().all(|x| {
+                // Check that there is still a local package with the same name
+                local_package_deps.iter().any(|y| x.name == y.name) &&
+                // Check that the local package still has the same dependencies
+                local_package_deps.clone().into_iter().all(|y| {
+                    // Note that the orders or the requires vector matters here.
+                    // The rpm query returns in a different order to the lockfile
+                    // (Requires(pre), Requires, then Requires(post)) so sorting is needed.
+                    let mut y_requires = y.requires.clone();
+                    let mut x_requires = x.requires.clone();
+                    y_requires.sort();
+                    x_requires.sort();
+                    if x.name == y.name {
+                        y_requires == x_requires
+                    }
+                    else {
+                        // If the local package names don't match, then we return true as
+                        // the case where the name of the local package changing/not matching
+                        // is handled in the above `any` check
+                        true
+                    }
+                })
+            }))
     }
 
     /// Write the lockfile to a file on disk
