@@ -24,7 +24,7 @@ use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict, PyString, PyTuple};
 use url::Url;
 
-use super::{DnfOutput, LocalPackage, Lockfile};
+use super::{DnfOutput, Lockfile};
 use crate::config::Config;
 use crate::config::Repository;
 
@@ -65,24 +65,6 @@ impl Lockfile {
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
         )
-    }
-
-    /// Resolve dependencies for local packages only
-    pub fn resolve_local_rpms(cfg: &Config) -> Result<BTreeSet<LocalPackage>> {
-        // Resolve the dependencies of only the local packages
-        let local = cfg
-            .contents
-            .packages
-            .clone()
-            .into_iter()
-            .filter(|spec| spec.ends_with(".rpm"))
-            .collect::<Vec<_>>();
-        let lockfile = Self::resolve(
-            local,
-            &cfg.contents.repositories,
-            cfg.contents.gpgkeys.clone(),
-        )?;
-        Ok(lockfile.local_packages)
     }
 
     /// Read the dependencies of local rpms
