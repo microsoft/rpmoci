@@ -12,9 +12,11 @@
 //!
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
-use std::collections::HashMap;
+use glob::glob;
+use std::collections::{BTreeSet, HashMap};
 use std::env;
 use std::ops::Deref;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use log::debug;
@@ -28,7 +30,7 @@ use crate::config::Repository;
 
 impl Lockfile {
     /// Perform dependency resolution on the given package specs
-    fn resolve(
+    pub(crate) fn resolve(
         pkg_specs: Vec<String>,
         repositories: &[Repository],
         gpgkeys: Vec<Url>,
@@ -63,6 +65,54 @@ impl Lockfile {
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
         )
+    }
+
+    /// Read the dependencies of local rpms
+    pub fn read_local_rpm_deps(cfg: &Config) -> Result<BTreeSet<String>> {
+        let local = cfg
+            .contents
+            .packages
+            .clone()
+            .into_iter()
+            .filter_map(|spec| {
+                if spec.ends_with(".rpm") {
+                    match glob(&spec) {
+                        Ok(paths) => Some(
+                            paths
+                                .into_iter()
+                                .filter_map(|p| match p {
+                                    Ok(path) => Some(path),
+                                    Err(_) => None,
+                                })
+                                .collect::<Vec<PathBuf>>(),
+                        ),
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect::<Vec<PathBuf>>();
+
+        let output = Python::with_gil(|py| {
+            // query_local is a compiled in python module for querying local dependencies
+            let query = PyModule::from_code(
+                py,
+                include_str!("query_local.py"),
+                "query_local",
+                "query_local",
+            )?;
+
+            let args = PyTuple::new(py, &[local.to_object(py)]);
+            // Run the query function, returning a json string, which we shall deserialize.
+            let val: String = query.getattr("query_local")?.call1(args)?.extract()?;
+            Ok::<_, anyhow::Error>(val)
+        })
+        .context("Failed to resolve dependencies with dnf")?;
+
+        let results: BTreeSet<String> = serde_json::from_str(&output)?;
+        Ok(results)
     }
 
     /// Create a lockfile by updating any dependencies in the current lockfile

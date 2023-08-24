@@ -17,7 +17,7 @@ The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/a
 ## Installing
 rpmoci isn't published to a widely accessible location yet so you'll need build it from source with `cargo build`
 
-rpmoci has a runtime dependency on dnf.
+rpmoci has a runtime dependency on dnf and python-rpm (a dependency of dnf, so shouldn't need to be specified directly).
 
 ## Getting started
 You need to create an rpmoci.toml file. An example is:

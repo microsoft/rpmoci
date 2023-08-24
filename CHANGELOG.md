@@ -1,6 +1,7 @@
 ### Breaking Changes
 ### Added
 ### Fixed
+When running an unlocked `build` with a lockfile present check that all dependencies are compatible.
 
 ## 0.2.8 - 2023-08-15
 

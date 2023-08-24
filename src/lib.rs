@@ -105,7 +105,7 @@ pub fn main(command: Command) -> anyhow::Result<()> {
                     lockfile
                 }
                 (Ok(Some(lockfile)), false) => {
-                    if lockfile.is_compatible(&cfg) {
+                    if lockfile.all_local_deps_compatible(&cfg)? {
                         // Compatible lockfile, use it
                         lockfile
                     } else {

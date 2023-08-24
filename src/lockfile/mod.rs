@@ -49,14 +49,14 @@ pub struct Lockfile {
 /// with the lockfile. In particular, the local RPM's version can change without
 /// re-resolving the lockfile.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Ord)]
-struct LocalPackage {
+pub struct LocalPackage {
     /// The path to the package
     name: String,
     /// The RPM requires
     requires: Vec<String>,
 }
 
-/// Format of dnf script output
+/// Format of dnf resolve script output
 #[derive(Debug, Serialize, Deserialize)]
 struct DnfOutput {
     /// The resolved remote packages
@@ -115,6 +115,22 @@ impl Lockfile {
     #[must_use]
     pub fn is_compatible(&self, cfg: &Config) -> bool {
         self.pkg_specs == cfg.contents.packages && self.global_key_specs == cfg.contents.gpgkeys
+    }
+
+    /// Returns true if the lockfile is compatible with the specified configuration
+    /// and if all rpm packages required by local dependencies are included in the lockfile.
+    pub fn all_local_deps_compatible(&self, cfg: &Config) -> Result<bool> {
+        let local_package_deps: BTreeSet<String> = self
+            .local_packages
+            .clone()
+            .into_iter()
+            .flat_map(|p| p.requires)
+            .collect();
+
+        Ok(self.pkg_specs == cfg.contents.packages
+            && self.global_key_specs == cfg.contents.gpgkeys
+            // Verify dependencies of all local packages
+            && Self::read_local_rpm_deps(cfg)? == local_package_deps)
     }
 
     /// Write the lockfile to a file on disk
