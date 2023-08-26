@@ -5,8 +5,8 @@ rpmoci builds OCI container images from RPM packages, using [DNF](https://github
 rpmoci features:
 
  - **deterministic** rpmoci locks RPM dependencies using the package file/lockfile paradigm of bundler/cargo etc and can produce reproducible images with identical digests.
- - **no container runtime required** rpmoci can build images in environments without docker access.
- - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary packages.
+ - **unprivileged** rpmoci can build images in environments without docker access, and without root access (this relies on the user being able to create [user namespaces](https://www.man7.org/linux/man-pages/man7/user_namespaces.7.html))
+ - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary dependencies.
 
 The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/apko) and [distroless](https://github.com/GoogleContainerTools/distroless) tooling.
 
