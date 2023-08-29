@@ -23,7 +23,6 @@ glob = "0.3.0"
 log = "0.4.19"
 nix = { version = "0.26.2", features = [
     "sched",
-    "signal",
     "user",
 ], default-features = false }
 oci-spec = { version = "0.6.3", features = ["image"], default-features = false }

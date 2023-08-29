@@ -12,14 +12,14 @@
 //!
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
-use std::{fs::File, io::Write, os::unix::process::CommandExt, path::PathBuf, process::Command};
+use std::{fs::read_to_string, os::unix::process::CommandExt, path::Path, process::Command};
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use nix::{
     sched::CloneFlags,
-    sys::{signal, wait::wait},
-    unistd::{close, getgid, getuid, pipe, read},
+    sys::wait::wait,
+    unistd::{close, getgid, getuid, pipe, read, Gid, Group, Pid, Uid, User},
 };
 use rpmoci::write;
 
@@ -65,27 +65,15 @@ fn run_in_userns() -> anyhow::Result<()> {
             255
         }),
         stack,
-        CloneFlags::CLONE_NEWUSER,
-        Some(signal::SIGCHLD as i32),
+        CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWNS,
+        None,
     )
     .context("Clone failed")?;
 
     // this parent process sets up user namespace mappings, notifies the child to continue,
     // then waits for the child to exit
     close(reader)?;
-    let child_proc = PathBuf::from("/proc").join(child.to_string());
-    File::create(child_proc.join("setgroups"))
-        .context("failed to create setgroups file")?
-        .write_all(b"deny")
-        .context("failed to write to setgroups file")?;
-    // map the current uid/gid to root, and create mappings for uids/gids 1-999 as
-    // RPMs could potentially contain files owned by any of these
-    // (these additional mappings are the cause of us needing to spawn a child - otherwise
-    // we could just unshare and configure mappings in the current process)
-    File::create(child_proc.join("uid_map"))?
-        .write_all(format!("0 {user_id} 1\n1 100000 999").as_bytes())?;
-    File::create(child_proc.join("gid_map"))?
-        .write_all(format!("0 {group_id} 1\n1 100000 999").as_bytes())?;
+    setup_id_maps(child, user_id, group_id).context("Failed to setup id mappings")?;
     close(writer)?;
     let status = wait()?;
     if let nix::sys::wait::WaitStatus::Exited(_, code) = status {
@@ -93,6 +81,101 @@ fn run_in_userns() -> anyhow::Result<()> {
     } else {
         bail!("Child process failed");
     }
+}
+
+// Represents a range of sub uid/gids
+#[derive(Debug)]
+struct SubIdRange {
+    start: usize,
+    count: usize,
+}
+
+fn get_sub_id_ranges(
+    subid_path: impl AsRef<Path>,
+    id: &str,
+    name: Option<&str>,
+) -> anyhow::Result<Vec<SubIdRange>> {
+    let subid_path = subid_path.as_ref();
+    Ok(read_to_string(subid_path)
+        .context(format!(
+            "Failed to read sub id file {}",
+            subid_path.display()
+        ))?
+        .lines() // split the string into an iterator of string slices
+        .filter_map(|line| {
+            let parts = line.splitn(2, ':').collect::<Vec<_>>();
+            if parts.len() != 3 {
+                // Not a valid line
+                return None;
+            }
+            if Some(parts[0]) != name || parts[0] != id {
+                // Not a line for the desired user/group
+                return None;
+            }
+            if let (Ok(start), Ok(count)) = (parts[1].parse::<usize>(), parts[2].parse::<usize>()) {
+                Some(SubIdRange { start, count })
+            } else {
+                None
+            }
+        })
+        .collect())
+}
+
+const ETC_SUBUID: &str = "/etc/subuid";
+const ETC_SUBGID: &str = "/etc/subgid";
+
+/// Create new uid/gid mappings for the current user/group
+fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
+    let username = User::from_uid(uid).ok().flatten().map(|user| user.name);
+    let uid_string = uid.to_string();
+    let subuid_ranges = get_sub_id_ranges(ETC_SUBUID, &uid_string, username.as_deref())?;
+
+    let groupname = Group::from_gid(gid)
+        .ok()
+        .flatten()
+        .map(|group: Group| group.name);
+    let gid_string = gid.to_string();
+    let subgid_ranges = get_sub_id_ranges(ETC_SUBGID, &gid.to_string(), groupname.as_deref())?;
+
+    let mut uid_args = vec![
+        child.to_string(),
+        "0".to_string(),
+        uid_string,
+        "1".to_string(),
+    ];
+    let mut next_uid = 1;
+    for range in subuid_ranges {
+        uid_args.push(next_uid.to_string());
+        uid_args.push(range.start.to_string());
+        uid_args.push(range.count.to_string());
+        next_uid += range.count;
+    }
+
+    let mut gid_args = vec![
+        child.to_string(),
+        "0".to_string(),
+        gid_string,
+        "1".to_string(),
+    ];
+    let mut next_gid = 1;
+    for range in subgid_ranges {
+        gid_args.push(next_gid.to_string());
+        gid_args.push(range.start.to_string());
+        gid_args.push(range.count.to_string());
+        next_gid += range.count;
+    }
+
+    let status = Command::new("newuidmap").args(uid_args).status()?;
+    if !status.success() {
+        bail!("Failed to create uid mappings");
+    }
+
+    let status = Command::new("newgidmap").args(gid_args).status()?;
+    if !status.success() {
+        bail!("Failed to create gid mappings");
+    }
+
+    Ok(())
 }
 
 fn try_main() -> Result<()> {
