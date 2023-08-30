@@ -12,16 +12,16 @@
 //!
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
-use std::{fs::read_to_string, os::unix::process::CommandExt, path::Path, process::Command};
+use std::{os::unix::process::CommandExt, process::Command};
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use nix::{
     sched::CloneFlags,
     sys::wait::wait,
-    unistd::{close, getgid, getuid, pipe, read, Gid, Group, Pid, Uid, User},
+    unistd::{close, getgid, getuid, pipe, read},
 };
-use rpmoci::write;
+use rpmoci::{subid::setup_id_maps, write};
 
 fn main() {
     if let Err(err) = try_main() {
@@ -77,105 +77,12 @@ fn run_in_userns() -> anyhow::Result<()> {
     close(writer)?;
     let status = wait()?;
     if let nix::sys::wait::WaitStatus::Exited(_, code) = status {
+        // Exit immediately with the child's exit code, as the child should have
+        // have already printed any error messages on completion
         std::process::exit(code);
     } else {
         bail!("Child process failed");
     }
-}
-
-// Represents a range of sub uid/gids
-#[derive(Debug)]
-struct SubIdRange {
-    start: usize,
-    count: usize,
-}
-
-fn get_sub_id_ranges(
-    subid_path: impl AsRef<Path>,
-    id: &str,
-    name: Option<&str>,
-) -> anyhow::Result<Vec<SubIdRange>> {
-    let subid_path = subid_path.as_ref();
-    Ok(read_to_string(subid_path)
-        .context(format!(
-            "Failed to read sub id file {}",
-            subid_path.display()
-        ))?
-        .lines() // split the string into an iterator of string slices
-        .filter_map(|line| {
-            let parts = line.splitn(2, ':').collect::<Vec<_>>();
-            if parts.len() != 3 {
-                // Not a valid line
-                return None;
-            }
-            if Some(parts[0]) != name || parts[0] != id {
-                // Not a line for the desired user/group
-                return None;
-            }
-            if let (Ok(start), Ok(count)) = (parts[1].parse::<usize>(), parts[2].parse::<usize>()) {
-                Some(SubIdRange { start, count })
-            } else {
-                None
-            }
-        })
-        .collect())
-}
-
-const ETC_SUBUID: &str = "/etc/subuid";
-const ETC_SUBGID: &str = "/etc/subgid";
-
-/// Create new uid/gid mappings for the current user/group
-fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
-    let username = User::from_uid(uid).ok().flatten().map(|user| user.name);
-    let uid_string = uid.to_string();
-    let subuid_ranges = get_sub_id_ranges(ETC_SUBUID, &uid_string, username.as_deref())?;
-
-    let groupname = Group::from_gid(gid)
-        .ok()
-        .flatten()
-        .map(|group: Group| group.name);
-    let gid_string = gid.to_string();
-    let subgid_ranges = get_sub_id_ranges(ETC_SUBGID, &gid.to_string(), groupname.as_deref())?;
-
-    let mut uid_args = vec![
-        child.to_string(),
-        "0".to_string(),
-        uid_string,
-        "1".to_string(),
-    ];
-    let mut next_uid = 1;
-    for range in subuid_ranges {
-        uid_args.push(next_uid.to_string());
-        uid_args.push(range.start.to_string());
-        uid_args.push(range.count.to_string());
-        next_uid += range.count;
-    }
-
-    let mut gid_args = vec![
-        child.to_string(),
-        "0".to_string(),
-        gid_string,
-        "1".to_string(),
-    ];
-    let mut next_gid = 1;
-    for range in subgid_ranges {
-        gid_args.push(next_gid.to_string());
-        gid_args.push(range.start.to_string());
-        gid_args.push(range.count.to_string());
-        next_gid += range.count;
-    }
-
-    let status = Command::new("newuidmap").args(uid_args).status()?;
-    if !status.success() {
-        bail!("Failed to create uid mappings");
-    }
-
-    let status = Command::new("newgidmap").args(gid_args).status()?;
-    if !status.success() {
-        bail!("Failed to create gid mappings");
-    }
-
-    Ok(())
 }
 
 fn try_main() -> Result<()> {
