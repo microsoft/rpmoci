@@ -167,7 +167,7 @@ impl ImageConfig {
                     .collect::<Vec<_>>(),
             )
             .exposed_ports(exposed_ports.clone())
-            .labels(labels.clone());
+            .labels(merged_labels.clone());
         if let Some(user) = user {
             builder = builder.user(user);
         }
@@ -298,5 +298,35 @@ mod tests {
             .iter()
             .any(|e| e == "PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"));
         assert_eq!(envs.len(), 2);
+    }
+
+    #[test]
+    fn label_merging() {
+        let config_str = r#"
+        labels = { "foo.bar" = "baz"}
+        "#;
+        // No additional labels
+        let config: oci_spec::image::ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
+            .unwrap()
+            .to_oci_image_configuration(HashMap::new())
+            .unwrap();
+        let labels = config.config().as_ref().unwrap().labels().as_ref().unwrap();
+        assert_eq!(labels.get("foo.bar").unwrap(), "baz");
+        assert_eq!(labels.len(), 1);
+
+        let extra_labels = [
+            ("foo.bar".to_string(), "qux".to_string()),
+            ("foo.baz".to_string(), "quux".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let config: oci_spec::image::ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
+            .unwrap()
+            .to_oci_image_configuration(extra_labels)
+            .unwrap();
+        let labels = config.config().as_ref().unwrap().labels().as_ref().unwrap();
+        assert_eq!(labels.get("foo.bar").unwrap(), "qux");
+        assert_eq!(labels.get("foo.baz").unwrap(), "quux");
+        assert_eq!(labels.len(), 2);
     }
 }

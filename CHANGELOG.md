@@ -1,7 +1,8 @@
 ### Breaking Changes
 ### Added
 ### Fixed
-When running an unlocked `build` with a lockfile present check that all dependencies are compatible.
+- When running an unlocked `build` with a lockfile present check that all dependencies are compatible.
+- Set labels from the CLI correctly, regressed in 0.2.8.
 
 ## 0.2.8 - 2023-08-15
 
