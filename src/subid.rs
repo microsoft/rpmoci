@@ -39,7 +39,7 @@ const ETC_SUBGID: &str = "/etc/subgid";
 pub fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
     let username = User::from_uid(uid).ok().flatten().map(|user| user.name);
     let uid_string = uid.to_string();
-    let newuidmap_args = newidmap_args(
+    let (newuidmap_args, subuid_count) = newidmap_args(
         File::open(ETC_SUBUID).context("Failed to open /etc/subuid")?,
         &uid_string,
         username.as_deref(),
@@ -52,13 +52,17 @@ pub fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
         .flatten()
         .map(|group: Group| group.name);
     let gid_string = gid.to_string();
-    let newgidmap_args = newidmap_args(
+    let (newgidmap_args, subgid_count) = newidmap_args(
         File::open(ETC_SUBGID).context("Failed to open /etc/subgid")?,
         &gid_string,
         groupname.as_deref(),
         child,
     )
     .context("Failed to read subgids from /etc/subgid")?;
+
+    if subuid_count < 1000 || subgid_count < 1000 {
+        bail!("Not enough subids. Please configure at least 999 subuids and subgids for the current user in /etc/subuid and /etc/subgid");
+    }
 
     let status = Command::new("newuidmap").args(newuidmap_args).status()?;
     if !status.success() {
@@ -73,12 +77,14 @@ pub fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
     Ok(())
 }
 
+// Determine the newuidmap/newgidmap arguments to configure sub ids,
+// and the number of ids that will be mapped
 fn newidmap_args(
     etc_subid: impl Read,
     id: &str,
     name: Option<&str>,
     child: Pid,
-) -> Result<Vec<String>> {
+) -> Result<(Vec<String>, usize)> {
     let mut args = vec![
         child.to_string(),
         "0".to_string(),
@@ -93,7 +99,7 @@ fn newidmap_args(
         args.push(range.count.to_string());
         next_id += range.count;
     }
-    Ok(args)
+    Ok((args, next_id))
 }
 
 /// Get the subid ranges for a user or group
@@ -198,21 +204,24 @@ user1:1:8
                 Pid::from_raw(1234)
             )
             .unwrap(),
-            vec![
-                "1234".to_string(),
-                "0".to_string(),
-                "1000".to_string(),
-                "1".to_string(),
-                "1".to_string(),
-                "100".to_string(),
-                "500".to_string(),
-                "501".to_string(),
-                "1".to_string(),
-                "8".to_string(),
-                "509".to_string(),
-                "100000".to_string(),
-                "5".to_string()
-            ]
+            (
+                vec![
+                    "1234".to_string(),
+                    "0".to_string(),
+                    "1000".to_string(),
+                    "1".to_string(),
+                    "1".to_string(),
+                    "100".to_string(),
+                    "500".to_string(),
+                    "501".to_string(),
+                    "1".to_string(),
+                    "8".to_string(),
+                    "509".to_string(),
+                    "100000".to_string(),
+                    "5".to_string()
+                ],
+                514
+            )
         );
     }
 }
