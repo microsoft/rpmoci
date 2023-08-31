@@ -27,6 +27,7 @@ pub mod config;
 pub mod lockfile;
 mod oci;
 mod sha256_writer;
+pub mod subid;
 pub mod write;
 use anyhow::Result;
 use cli::Command;
