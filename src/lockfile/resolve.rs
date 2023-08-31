@@ -128,6 +128,9 @@ impl Lockfile {
                     .iter()
                     .flat_map(|pkg| pkg.requires.clone()),
             )
+            // dnf is not aware of rpmlib() requirements that the RPMs may have, so we need to filter them out
+            // similar to tdnf: https://github.com/vmware/tdnf/blob/ed235f71ec6d477c8934b82ea12d983c0a8c60d8/client/resolve.c#L508
+            .filter(|requires| !requires.starts_with("rpmlib("))
             .collect::<Vec<_>>();
 
         let mut lockfile = Self::resolve(

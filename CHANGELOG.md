@@ -1,8 +1,12 @@
 ### Breaking Changes
 ### Added
 ### Fixed
+
+## 0.2.9 - 2023-08-31
+### Fixed
 - When running an unlocked `build` with a lockfile present check that all dependencies are compatible.
 - Set labels from the CLI correctly, regressed in 0.2.8.
+- Ignore "rpmlib" dependencies when resolving RPMs with `rpmoci update --from-lockfile`
 
 ## 0.2.8 - 2023-08-15
 
