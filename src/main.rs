@@ -18,7 +18,10 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use nix::{
     sched::CloneFlags,
-    sys::wait::wait,
+    sys::{
+        signal::{self, Signal},
+        wait::wait,
+    },
     unistd::{close, getgid, getuid, pipe, read},
 };
 use rpmoci::{subid::setup_id_maps, write};
@@ -73,7 +76,13 @@ fn run_in_userns() -> anyhow::Result<()> {
     // this parent process sets up user namespace mappings, notifies the child to continue,
     // then waits for the child to exit
     close(reader)?;
-    setup_id_maps(child, user_id, group_id).context("Failed to setup id mappings")?;
+    // Kill the child process if we fail to setup the uid/gid mappings
+    if let Err(e) =
+        setup_id_maps(child, user_id, group_id).context("Failed to setup uid/gid mappings")
+    {
+        signal::kill(child, Signal::SIGTERM)?;
+        return Err(e);
+    }
     close(writer)?;
     let status = wait()?;
     if let nix::sys::wait::WaitStatus::Exited(_, code) = status {
@@ -92,7 +101,7 @@ fn try_main() -> Result<()> {
         .init();
 
     if !getuid().is_root() {
-        run_in_userns().context("Failed to run rpmoci in user namespace")?;
+        run_in_userns().context("Failed to run rpmoci in rootless mode. See https://github.com/microsoft/rpmoci#rootless-setup, or re-run as root")?;
     }
     rpmoci::main(args.command)
 }

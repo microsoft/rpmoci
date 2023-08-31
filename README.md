@@ -34,7 +34,7 @@ rpmoci maps the user's uid/gid to root in the user namespace.
 
 It also attempts to map the current user's subuid/subgid range into the user namespace, which is required for rpmoci to be able to create containers from RPMs that contain files owned by a non-root user.
 
-If your user doesn't have any subuids/subgids then you'll need to create them per [https://rootlesscontaine.rs/getting-started/common/subuid/](https://rootlesscontaine.rs/getting-started/common/subuid/).
+rpmoci requires that at least 999 subuids/subgids are allocated to your user. You can create them per [https://rootlesscontaine.rs/getting-started/common/subuid/](https://rootlesscontaine.rs/getting-started/common/subuid/).
 
 ## Getting started
 You need to create an rpmoci.toml file. An example is:
