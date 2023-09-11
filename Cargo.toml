@@ -27,7 +27,7 @@ tempfile = "3.8.0"
 termcolor = "1.1.3"
 toml = { version = "0.7.1" }
 url = { version = "2.2.2", features = ["serde"] }
-walkdir = "2.3.2"
+walkdir = "2.4.0"
 xattr = "1.0.1"
 
 [package.metadata.generate-rpm]
