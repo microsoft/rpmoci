@@ -21,7 +21,7 @@ openssl = "0.10.55"
 pathdiff = "0.2.1"
 pyo3 = { version = "0.19.1", features = ["auto-initialize"] }
 serde = { version = "1.0.185", features = ["derive"] }
-serde_json = "1.0.105"
+serde_json = "1.0.106"
 tar = "0.4.38"
 tempfile = "3.8.0"
 termcolor = "1.1.3"
