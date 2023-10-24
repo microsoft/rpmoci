@@ -22,6 +22,8 @@ use std::{
     process::Command,
 };
 
+use crate::write;
+
 /// Represents a range of sub uid/gids
 #[derive(Debug, PartialEq)]
 pub struct SubIdRange {
@@ -60,8 +62,20 @@ pub fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
     )
     .context("Failed to read subgids from /etc/subgid")?;
 
+    if subuid_count < 1000 {
+        write::error(
+            "Error",
+            "At least 999 subuids must be configured for the current user in /etc/subuid",
+        )?;
+    }
+    if subgid_count < 1000 {
+        write::error(
+            "Error",
+            "At least 999 subgids must be configured for the current group in /etc/subgid",
+        )?;
+    }
     if subuid_count < 1000 || subgid_count < 1000 {
-        bail!("Not enough subids. Please configure at least 999 subuids and subgids for the current user in /etc/subuid and /etc/subgid");
+        bail!("Not enough subids available");
     }
 
     let status = Command::new("newuidmap").args(newuidmap_args).status()?;
