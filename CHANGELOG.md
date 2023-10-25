@@ -2,6 +2,10 @@
 ### Added
 ### Fixed
 
+## 0.2.10 - 2023-10-25
+### Fixed
+- Don't attempt to verify signatures from packages from repositories that have `gpgcheck` disabled.
+
 ## 0.2.9 - 2023-08-31
 ### Fixed
 - When running an unlocked `build` with a lockfile present check that all dependencies are compatible.
