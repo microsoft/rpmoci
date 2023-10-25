@@ -16,8 +16,9 @@
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use anyhow::{bail, Context, Result};
 use flate2::{write::GzEncoder, Compression};
-use oci_spec::image::{Descriptor, DescriptorBuilder, MediaType};
-use serde::{Deserialize, Serialize};
+use oci_spec::image::{Descriptor, DescriptorBuilder, MediaType, OciLayout, OciLayoutBuilder};
+use semver::Version;
+use serde::Serialize;
 use std::{
     fs,
     io::Write,
@@ -30,8 +31,6 @@ use walkdir::WalkDir;
 use crate::sha256_writer::Sha256Writer;
 
 const OCI_LAYOUT_PATH: &str = "oci-layout";
-// The only version we know
-const OCI_LAYOUT_VERSION: &str = "1.0.0";
 
 /// Initialize an [OCI image directory](https://github.com/opencontainers/image-spec/blob/main/image-layout.md) if required
 ///
@@ -43,39 +42,31 @@ pub(crate) fn init_image_directory(layout: impl AsRef<Path>) -> Result<(), anyho
     // If path exists, check whether it's a valid OCI image directory
     if layout.as_ref().exists() {
         match fs::read_dir(layout.as_ref()) {
-            Ok(mut dir) => {
-                // If this directory has an oci-layout file, check the version is one we know
-                if let Some(oci_layout_entry) = dir.find(|entry| {
-                    if let Ok(entry) = entry {
-                        entry.file_name() == OCI_LAYOUT_PATH
-                    } else {
-                        false
-                    }
-                }) {
-                    // read existing file, assert we can handle the version
-                    let p = oci_layout_entry?.path();
-                    let layout_file_contents = fs::read_to_string(&p)
-                        .context(format!("Failed to read `{}`", p.display()))?;
-                    let oci_layout: OciImageLayout = serde_json::from_str(&layout_file_contents)?;
-                    // We only know 1.0.0 now
-                    if oci_layout.version != OCI_LAYOUT_VERSION {
-                        bail!(
-                            "Unrecognized image layout version `{}` in {}",
-                            oci_layout.version,
-                            layout.as_ref().display()
-                        )
-                    }
-                }
+            Ok(dir) => {
                 // if the directory exists but is empty, then initialize it
-                else if dir.count() == 0 {
+                if dir.count() == 0 {
                     init_dir(layout.as_ref())?;
                 }
-                // and if it's non-empty but doesn't have an oci-layout file, then bail
-                else {
-                    bail!(
-                        "Directory exists but is not an OCI image directory: {}",
-                        layout.as_ref().display()
-                    )
+
+                match OciLayout::from_file(layout.as_ref().join(OCI_LAYOUT_PATH)) {
+                    Ok(oci_layout) => {
+                        let version = Version::parse(oci_layout.image_layout_version())
+                            .context("Failed to parse image layout version from oci-layout file")?;
+                        if version.major != u64::from(oci_spec::image::VERSION_MAJOR) {
+                            bail!(
+                                "Unsupported image layout version found: {}. rpmoci only supports oci-layout versions that are semver compatible with {}",
+                                version,
+                                oci_spec::image::version()
+                            )
+                        }
+                    }
+                    Err(e) => {
+                        bail!(
+                            "Failed to read oci-layout file in directory: {}. Error: {}",
+                            layout.as_ref().display(),
+                            e
+                        )
+                    }
                 }
             }
             Err(e) => {
@@ -94,21 +85,6 @@ pub(crate) fn init_image_directory(layout: impl AsRef<Path>) -> Result<(), anyho
     Ok(())
 }
 
-/// An [OCI layout file](https://github.com/opencontainers/image-spec/blob/main/image-layout.md#oci-layout-file)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OciImageLayout {
-    #[serde(rename = "imageLayoutVersion")]
-    version: String,
-}
-
-impl Default for OciImageLayout {
-    fn default() -> Self {
-        OciImageLayout {
-            version: OCI_LAYOUT_VERSION.to_string(),
-        }
-    }
-}
-
 /// Create blobs/sha256, index.json and oci-layout file in a directory
 fn init_dir(layout: impl AsRef<Path>) -> Result<(), anyhow::Error> {
     // Create blobs directory
@@ -119,14 +95,13 @@ fn init_dir(layout: impl AsRef<Path>) -> Result<(), anyhow::Error> {
     ))?;
 
     // create oci-layout file
-    let layout_path = layout.as_ref().join(OCI_LAYOUT_PATH);
-    let layout_file = fs::File::create(&layout_path).context(format!(
-        "Failed to create oci-layout file `{}`",
-        layout_path.display()
-    ))?;
-    serde_json::to_writer(layout_file, &OciImageLayout::default()).context(format!(
+    let oci_layout = OciLayoutBuilder::default()
+        .image_layout_version(oci_spec::image::version())
+        .build()?;
+    let oci_layout_path = layout.as_ref().join(OCI_LAYOUT_PATH);
+    oci_layout.to_file(&oci_layout_path).context(format!(
         "Failed to write to oci-layout file `{}`",
-        layout_path.display()
+        oci_layout_path.display()
     ))?;
 
     // create image index
@@ -324,5 +299,14 @@ mod tests {
         let test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/init/actual");
         let _ = std::fs::remove_dir_all(&test_dir);
         init_image_directory(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn test_init_incompatible_version() {
+        let test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/init/old");
+        let e = init_image_directory(test_dir).unwrap_err();
+        assert!(e
+            .to_string()
+            .contains("Unsupported image layout version found"));
     }
 }
