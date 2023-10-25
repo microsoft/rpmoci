@@ -12,6 +12,7 @@
 //!
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::path::Path;
@@ -76,11 +77,50 @@ impl Lockfile {
             }
         }
 
-        // verify each RPM in the directory
+        // Get list of RPM names whose signatures need to be verified
+        let gpgcheck_repoids = self
+            .repo_gpg_config
+            .iter()
+            .filter_map(|(repoid, repo_key_info)| {
+                if repo_key_info.gpgcheck {
+                    Some(repoid)
+                } else {
+                    None
+                }
+            })
+            .collect::<HashSet<_>>();
+        let gpgcheck_pkg_names = self
+            .packages
+            .iter()
+            .filter_map(|p| {
+                if gpgcheck_repoids.contains(&p.repoid) {
+                    Some(p.name.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<HashSet<_>>();
+
+        // verify RPMs in the directory
         for file in fs::read_dir(dir)? {
             let path = file?.path();
             if path.extension() == Some(OsStr::new("rpm")) {
-                check_pkg_signature(&path, tmp_dir.path())?;
+                let pkg = rpm::Package::open(&path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to open RPM package {}: {}",
+                        path.display(),
+                        e.to_string()
+                    )
+                })?;
+                if gpgcheck_pkg_names.contains(pkg.metadata.get_name().map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to get RPM name {}: {}",
+                        path.display(),
+                        e.to_string()
+                    )
+                })?) {
+                    check_pkg_signature(&path, tmp_dir.path())?;
+                }
             }
         }
 
