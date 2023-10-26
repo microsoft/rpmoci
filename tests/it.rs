@@ -132,6 +132,8 @@ fn test_update_from_lockfile() {
     assert!(stderr.contains("Updating dnf 4.8.0-1.cm2 -> "));
 }
 
+// This test requires oras be installed, to check that the produced images are
+// compatible with another OCI tool.
 #[test]
 fn test_simple_build() {
     let root = setup_test("simple_build");
@@ -145,6 +147,17 @@ fn test_simple_build() {
         .output()
         .unwrap();
 
+    let oras_status = Command::new("sudo")
+        .arg("oras")
+        .arg("copy")
+        .arg("--from-oci-layout")
+        .arg("--to-oci-layout")
+        .arg("foo:bar")
+        .arg("baz:bar")
+        .current_dir(&root)
+        .status()
+        .unwrap();
+
     // Cleanup using sudo
     let _ = Command::new("sudo")
         .arg("rm")
@@ -156,6 +169,7 @@ fn test_simple_build() {
     let stderr = std::str::from_utf8(&output.stderr).unwrap();
     eprintln!("stderr: {}", stderr);
     assert!(output.status.success());
+    assert!(oras_status.success());
 }
 
 #[test]

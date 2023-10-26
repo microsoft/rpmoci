@@ -35,6 +35,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - uses: oras-project/setup-oras@v1
+        with:
+          version: 1.1.0
       - name: Run cargo test
         run: cargo test --features test-docker
 
