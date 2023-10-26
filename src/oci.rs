@@ -17,7 +17,6 @@
 use anyhow::{bail, Context, Result};
 use flate2::{write::GzEncoder, Compression};
 use oci_spec::image::{Descriptor, DescriptorBuilder, MediaType, OciLayout, OciLayoutBuilder};
-use semver::Version;
 use serde::Serialize;
 use std::{
     fs,
@@ -31,6 +30,10 @@ use walkdir::WalkDir;
 use crate::sha256_writer::Sha256Writer;
 
 const OCI_LAYOUT_PATH: &str = "oci-layout";
+// OCI layout version: https://github.com/opencontainers/image-spec/blob/main/image-layout.md#oci-layout-file
+// Fixed at 1.0.0 until changes to the layout format are made, when changes are made the new version will be
+// taken from the OCI spec version that makes the changes.
+const OCI_LAYOUT_VERSION: &str = "1.0.0";
 
 /// Initialize an [OCI image directory](https://github.com/opencontainers/image-spec/blob/main/image-layout.md) if required
 ///
@@ -50,13 +53,11 @@ pub(crate) fn init_image_directory(layout: impl AsRef<Path>) -> Result<(), anyho
 
                 match OciLayout::from_file(layout.as_ref().join(OCI_LAYOUT_PATH)) {
                     Ok(oci_layout) => {
-                        let version = Version::parse(oci_layout.image_layout_version())
-                            .context("Failed to parse image layout version from oci-layout file")?;
-                        if version.major != u64::from(oci_spec::image::VERSION_MAJOR) {
+                        if oci_layout.image_layout_version() != OCI_LAYOUT_VERSION {
                             bail!(
-                                "Unsupported image layout version found: {}. rpmoci only supports oci-layout versions that are semver compatible with {}",
-                                version,
-                                oci_spec::image::version()
+                                "Unsupported image layout version found: {}. rpmoci only supports oci-layout version {}",
+                                oci_layout.image_layout_version(),
+                                OCI_LAYOUT_VERSION
                             )
                         }
                     }
@@ -96,7 +97,7 @@ fn init_dir(layout: impl AsRef<Path>) -> Result<(), anyhow::Error> {
 
     // create oci-layout file
     let oci_layout = OciLayoutBuilder::default()
-        .image_layout_version(oci_spec::image::version())
+        .image_layout_version(OCI_LAYOUT_VERSION)
         .build()?;
     let oci_layout_path = layout.as_ref().join(OCI_LAYOUT_PATH);
     oci_layout.to_file(&oci_layout_path).context(format!(
@@ -292,6 +293,8 @@ where
 mod tests {
     use std::path::PathBuf;
 
+    use oci_spec::image::OciLayout;
+
     use super::init_image_directory;
 
     #[test]
@@ -299,14 +302,12 @@ mod tests {
         let test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/init/actual");
         let _ = std::fs::remove_dir_all(&test_dir);
         init_image_directory(&test_dir).unwrap();
-    }
 
-    #[test]
-    fn test_init_incompatible_version() {
-        let test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/init/old");
-        let e = init_image_directory(test_dir).unwrap_err();
-        assert!(e
-            .to_string()
-            .contains("Unsupported image layout version found"));
+        assert_eq!(
+            OciLayout::from_file(test_dir.join("oci-layout"))
+                .unwrap()
+                .image_layout_version(),
+            "1.0.0"
+        );
     }
 }

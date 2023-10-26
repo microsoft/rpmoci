@@ -1,6 +1,6 @@
 [package]
 name = "rpmoci"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 description = "Build container images from RPMs"
 # rpmoci uses DNF (via pyo3) which is GPLV2+ licensed,
@@ -21,7 +21,6 @@ openssl = "0.10.55"
 pathdiff = "0.2.1"
 pyo3 = { version = "0.19.1", features = ["auto-initialize"] }
 rpm = { version = "0.12.1", default-features = false }
-semver = "1.0.20"
 serde = { version = "1.0.185", features = ["derive"] }
 serde_json = "1.0.105"
 tar = "0.4.38"

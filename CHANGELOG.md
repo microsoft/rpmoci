@@ -2,6 +2,11 @@
 ### Added
 ### Fixed
 
+## 0.2.11 - 2023-10-26
+### Fixed
+- Pin oci-layout versions to 1.0.0 rather than using the OCI spec version in `oci_spec` crate.
+  - rpmoci 0.2.10 produces invalid OCI images that are not compatible with the OCI spec, as they have an oci-layout version of 1.0.1.
+
 ## 0.2.10 - 2023-10-25
 ### Fixed
 - Don't attempt to verify signatures from packages from repositories that have `gpgcheck` disabled.
