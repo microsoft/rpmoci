@@ -1,18 +1,14 @@
 # rpmoci
-*rpmoci is a container build tool from Azure for Operators.*
 
-rpmoci builds OCI container images from RPM packages, using [DNF](https://github.com/rpm-software-management/dnf). It's essentially a containerization wrapper around `dnf install --installroot=/some/rootfs PACKAGE [PACAKGE ...]`.
+rpmoci builds OCI container images from RPM packages, using [DNF](https://github.com/rpm-software-management/dnf). It's essentially a containerization wrapper around `dnf install --installroot=/some/rootfs PACKAGE [PACKAGE ...]`.
 
 rpmoci features:
 
  - **deterministic** rpmoci locks RPM dependencies using the package file/lockfile paradigm of bundler/cargo etc and supports vendoring of RPMs for later rebuilds.
  - **no container runtime required** rpmoci can build images in environments without docker access.
- - **small** rpmoci images are built solely from the RPMs you request, so don't contain unnecessary dependencies.
+ - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary packages.
 
 The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/apko) and [distroless](https://github.com/GoogleContainerTools/distroless) tooling.
-
-*rpmoci can loosely be considered a wrapper around `dnf install --installroot=/path/to/rootfs`."*
-*If you don't want to use rpmoci but like the idea of creating small RPM-based container images then you may be able to just use `dnf install --installroot` and [umoci](https://umo.ci/), which is how rpmoci started out.*
 
 ## Installing
 rpmoci isn't published to a widely accessible location yet so you'll need build it from source with `cargo build`
@@ -233,6 +229,8 @@ $ rpmoci build --image foo --tag bar --vendor-dir vendor
 
 ### SBOM support
 rpmoci doesn't have native SBOM support, but because it just uses standard OS package functionality SBOM generators like trivy and syft can be used to generate SBOMs for the produced images.
+
+*For these tools to detect the Linux distribution correctly you may need to install the `<distro>-release` package in the image.*
 
 ## Developing
 
