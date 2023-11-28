@@ -2,6 +2,10 @@
 ### Added
 ### Fixed
 
+## 0.2.12 - 2023-11-28
+### Fixed
+- Initial release to crates.io.
+
 ## 0.2.11 - 2023-10-26
 ### Fixed
 - Pin oci-layout versions to 1.0.0 rather than using the OCI spec version in `oci_spec` crate.

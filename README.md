@@ -11,9 +11,22 @@ rpmoci features:
 The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/apko) and [distroless](https://github.com/GoogleContainerTools/distroless) tooling.
 
 ## Installing
-rpmoci isn't published to a widely accessible location yet so you'll need build it from source with `cargo build`
 
-rpmoci has a runtime dependency on dnf and python-rpm (a dependency of dnf, so shouldn't need to be specified directly).
+rpmoci has a runtime dependency on dnf, so requires a Linux distribution with dnf support.
+
+rpmoci is available to download from crates.io, so you'll need a Rust toolchain. You also need to install the python3 and openssl development packages (e.g `python3-devel` and `openssl-devel` on Fedora and RHEL derivatives). 
+
+Then install rpmoci via cargo:
+```bash
+cargo install rpmoci
+```
+
+## Building
+Per the above, you'll need dnf, Rust, python3-devel and openssl-devel installed.
+
+```bash
+cargo build
+```
 
 ## Getting started
 You need to create an rpmoci.toml file. An example is:
