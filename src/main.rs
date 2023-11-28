@@ -17,9 +17,13 @@ use std::{os::unix::process::CommandExt, process::Command};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use nix::{
+    libc::c_int,
     sched::CloneFlags,
     sys::{
-        signal::{self, Signal},
+        signal::{
+            self,
+            Signal::{self, SIGCHLD},
+        },
         wait::wait,
     },
     unistd::{close, getgid, getuid, pipe, read},
@@ -60,7 +64,13 @@ fn run_in_userns() -> anyhow::Result<()> {
         Box::new(|| {
             // this child process just waits for the parent to notify it before re-execing
             close(writer).unwrap();
-            read(reader, &mut Vec::new()).unwrap();
+
+            read(
+                reader,
+                // Pass a non-zero length buffer to read() to ensure the child blocks
+                &mut [0u8; 1],
+            )
+            .unwrap();
             Command::new(std::env::current_exe().unwrap())
                 .args(std::env::args().skip(1))
                 .env("RPMOCI_CACHE_DIR", cache_dir.clone())
@@ -69,7 +79,7 @@ fn run_in_userns() -> anyhow::Result<()> {
         }),
         stack,
         CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWNS,
-        None,
+        Some(SIGCHLD as c_int),
     )
     .context("Clone failed")?;
 
