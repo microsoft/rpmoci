@@ -6,6 +6,9 @@ description = "Build container images from RPMs"
 # rpmoci uses DNF (via pyo3) which is GPLV2+ licensed,
 # but uses Apache-2.0 licensed code compatible with GPL-3.0 but not GPL-2.0
 license = "GPL-3.0-or-later"
+documentation = "https://github.com/microsoft/rpmoci/blob/main/README.md"
+homepage = "https://github.com/microsoft/rpmoci"
+repository = "https://github.com/microsoft/rpmoci"
 
 [dependencies]
 anyhow = "1.0.75"
