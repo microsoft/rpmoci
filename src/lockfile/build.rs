@@ -18,8 +18,10 @@ use std::path::Path;
 use std::{fs, path::PathBuf, process::Command};
 
 use anyhow::{bail, Context, Result};
+use chrono::DateTime;
 use glob::glob;
 use oci_spec::image::{ImageIndex, ImageManifestBuilder, MediaType, RootFsBuilder};
+use rusqlite::Connection;
 use tempfile::TempDir;
 
 use super::Lockfile;
@@ -56,7 +58,19 @@ impl Lockfile {
         let tmp_dir = TempDir::new()?;
         let installroot = PathBuf::from(tmp_dir.path());
         let mut dnf_install = Command::new("dnf");
+
+        let creation_time = if let Ok(sde) = std::env::var("SOURCE_DATE_EPOCH") {
+            let timestamp = sde
+                .parse::<i64>()
+                .with_context(|| format!("Failed to parse SOURCE_DATE_EPOCH `{}`", sde))?;
+            DateTime::from_timestamp(timestamp, 0)
+                .ok_or_else(|| anyhow::anyhow!("SOURCE_DATE_EPOCH out of range: `{}`", sde))?
+        } else {
+            chrono::Utc::now()
+        };
+
         dnf_install
+            .env("SOURCE_DATE_EPOCH", creation_time.timestamp().to_string())
             .arg("--disablerepo=*")
             .arg("--installroot")
             .arg(&installroot)
@@ -102,9 +116,24 @@ impl Lockfile {
         }
         write::ok("Installed", "packages successfully")?;
 
+        // Remove unnecessary installation artifacts from the rootfs if present
+        let _ = fs::remove_dir_all(installroot.join("var/log"));
+        let _ = fs::remove_dir_all(installroot.join("var/cache"));
+        let _ = fs::remove_dir_all(installroot.join("var/tmp"));
+        let _ = fs::remove_dir_all(installroot.join("var/lib/dnf/"));
+        let _ = fs::remove_file(installroot.join("var/lib/rpm/.rpm.lock"));
+        // rpm configures sqlite to persist the WAL and SHM files: https://github.com/rpm-software-management/rpm/blob/1cd9f9077a2829c363a198e5af56c8a56c6bc346/lib/backend/sqlite.c#L174C35-L174C59
+        // this is a source of non-determinism, so we disable it here (should rpm need to be run against this db, it will re-create the journaling files)
+        // This obviously only helps if RPM uses sqlite for the database and stores it in /var/lib/rpm
+        let sqlite_shm = installroot.join("var/lib/rpm/rpmdb.sqlite-shm");
+        if sqlite_shm.exists() {
+            disable_sqlite_journaling(&installroot.join("var/lib/rpm/rpmdb.sqlite"))
+                .context("Failed to disable sqlite journaling of RPM db")?;
+        }
+
         // Create the root filesystem layer
         write::ok("Creating", "root filesystem layer")?;
-        let (layer, diff_id) = match oci::create_image_layer(&installroot, image) {
+        let (layer, diff_id) = match oci::create_image_layer(&installroot, image, creation_time) {
             Ok((layer, diff_id)) => (layer, diff_id),
             Err(e) => {
                 let p = tmp_dir.into_path();
@@ -121,7 +150,9 @@ impl Lockfile {
 
         // Create the image configuration blob
         write::ok("Writing", "image configuration blob")?;
-        let mut image_config = cfg.image.to_oci_image_configuration(labels)?;
+        let mut image_config = cfg
+            .image
+            .to_oci_image_configuration(labels, creation_time)?;
         let rootfs = RootFsBuilder::default().diff_ids(vec![diff_id]).build()?;
         image_config.set_rootfs(rootfs);
         let config = oci::write_json_blob(&image_config, MediaType::ImageConfig, image)?;
@@ -181,4 +212,10 @@ impl Lockfile {
         ))?;
         Ok(())
     }
+}
+
+fn disable_sqlite_journaling(path: &Path) -> Result<()> {
+    let conn = Connection::open(path)?;
+    conn.pragma_update(None, "journal_mode", "DELETE")?;
+    Ok(())
 }
