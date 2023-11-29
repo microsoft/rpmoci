@@ -21,7 +21,10 @@ use serde::Serialize;
 use std::{
     fs,
     io::Write,
-    os::unix::prelude::{FileTypeExt, OsStrExt},
+    os::unix::{
+        fs::MetadataExt,
+        prelude::{FileTypeExt, OsStrExt},
+    },
     path::Path,
 };
 use tempfile::NamedTempFile;
@@ -126,10 +129,13 @@ fn init_dir(layout: impl AsRef<Path>) -> Result<(), anyhow::Error> {
 // https://mgorny.pl/articles/portability-of-tar-features.html#id25
 const PAX_SCHILY_XATTR: &[u8; 13] = b"SCHILY.xattr.";
 
-// workaround https://github.com/alexcrichton/tar-rs/issues/102 so that security capabilities are preserved
+/// manual implementation of append_dir_all that:
+/// - works around https://github.com/alexcrichton/tar-rs/issues/102 so that security capabilities are preserved
+/// - emulates tar's `--clamp-mtime` option for so that any file/dir/symlink mtimes are no later than a specific value
 fn append_dir_all_with_xattrs(
     tar: &mut tar::Builder<impl Write>,
     src_path: impl AsRef<Path>,
+    clamp_mtime: i64,
 ) -> Result<()> {
     let src_path = src_path.as_ref();
     for entry in WalkDir::new(src_path)
@@ -150,19 +156,32 @@ fn append_dir_all_with_xattrs(
             continue;
         }
 
-        if entry.file_type().is_dir() || entry.file_type().is_symlink() {
+        if entry.file_type().is_symlink() {
+            if meta.mtime() > clamp_mtime {
+                // Setting the mtime on a symlink is fiddly with tar-rs, so we use filetime to change
+                // the mtime before adding the symlink to the tar archive
+                let mtime = filetime::FileTime::from_unix_time(clamp_mtime, 0);
+                filetime::set_symlink_file_times(entry.path(), mtime, mtime)?;
+            }
             add_pax_extension_header(entry.path(), tar)?;
             tar.append_path_with_name(entry.path(), rel_path)?;
-        } else if entry.file_type().is_file() {
+        } else if entry.file_type().is_file() || entry.file_type().is_dir() {
             add_pax_extension_header(entry.path(), tar)?;
             let mut header = tar::Header::new_gnu();
             header.set_size(meta.len());
             header.set_metadata(&meta);
-            tar.append_data(
-                &mut header,
-                rel_path,
-                &mut std::fs::File::open(entry.path())?,
-            )?;
+            if meta.mtime() > clamp_mtime {
+                header.set_mtime(clamp_mtime as u64);
+            }
+            if entry.file_type().is_file() {
+                tar.append_data(
+                    &mut header,
+                    rel_path,
+                    &mut std::fs::File::open(entry.path())?,
+                )?;
+            } else {
+                tar.append_data(&mut header, rel_path, &mut std::io::empty())?;
+            };
         }
     }
 
@@ -220,6 +239,7 @@ fn add_pax_extension_header(
 pub(crate) fn create_image_layer(
     rootfs_path: impl AsRef<Path>,
     layout_path: impl AsRef<Path>,
+    creation_time: chrono::DateTime<chrono::Utc>,
 ) -> Result<(Descriptor, String)> {
     // We need to determine the sha256 hash of the compressed and uncompresssed blob.
     // The former for the blob id and the latter for the rootfs diff id which we need to include in the config blob.
@@ -229,7 +249,7 @@ pub(crate) fn create_image_layer(
     );
     let mut tar = tar::Builder::new(Sha256Writer::new(enc));
     tar.follow_symlinks(false);
-    append_dir_all_with_xattrs(&mut tar, rootfs_path.as_ref())
+    append_dir_all_with_xattrs(&mut tar, rootfs_path.as_ref(), creation_time.timestamp())
         .context("failed to archive root filesystem")?;
     let (diff_id_sha, gz) = tar.into_inner()?.finish();
     let (blob_digest, mut tmp_file) = gz.finish().context("failed to finish enc")?.finish();

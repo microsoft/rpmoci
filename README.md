@@ -4,7 +4,7 @@ rpmoci builds OCI container images from RPM packages, using [DNF](https://github
 
 rpmoci features:
 
- - **deterministic** rpmoci locks RPM dependencies using the package file/lockfile paradigm of bundler/cargo etc and supports vendoring of RPMs for later rebuilds.
+ - **deterministic** rpmoci locks RPM dependencies using the package file/lockfile paradigm of bundler/cargo etc and can produce reproducible images with identical digests.
  - **no container runtime required** rpmoci can build images in environments without docker access.
  - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary packages.
 
@@ -14,7 +14,7 @@ The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/a
 
 rpmoci has a runtime dependency on dnf, so requires a Linux distribution with dnf support.
 
-rpmoci is available to download from crates.io, so you'll need a Rust toolchain. You also need to install the python3 and openssl development packages (e.g `python3-devel` and `openssl-devel` on Fedora and RHEL derivatives). 
+rpmoci is available to download from crates.io, so you'll need a Rust toolchain. You also need to install the sqlite, python3 and openssl development packages (e.g `sqlite-devel`, `python3-devel` and `openssl-devel` on Fedora and RHEL derivatives). 
 
 Then install rpmoci via cargo:
 ```bash
@@ -73,7 +73,7 @@ repositories = ["https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64
 or defined with additional configuration options in the package manifest file (`rpmoci.toml` by default, can be specified via `-f FILE` on CLI)
 ```toml
 [[contents.repositories]]
-url = https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64/
+url = "https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64/"
 options = { includepkgs = "foo,bar" }
 ```
 
@@ -94,6 +94,12 @@ packages = [
   "path/to/local.rpm", # a local RPM
 ]
 ```
+
+#### Documentation file
+
+Whether or not documentation files are included in the produced containers can be specified via the `content.docs` boolean field.
+By default documentation files are not included, optimizing for image size.
+
 
 #### GPG key configuration
 GPG keys can be configued via the repository options or the `gpgkeys` field
@@ -118,14 +124,37 @@ and define the environment variables `RPMOCI_<id>_HTTP_USERNAME` and `RPMOCI_<id
 E.g with the following configuration you would need to define the environment variables `RPMOCI_FOO_HTTP_USERNAME` and `RPMOCI_FOO_HTTP_PASSWORD`:
 ```toml
 [[contents.repositories]]
-url = https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64/
+url = "https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64/"
 id = "foo"
 ```
 
-#### Documentation
+### Image configuration
 
-Whether or not documentation files are included in the produced containers can be specified via the `content.docs` boolean field.
-By default documentation files are not included, optimizing for image size.
+Additional [image configuration](https://github.com/opencontainers/image-spec/blob/main/config.md#properties) can be specified under the `image` key:
+
+```toml
+[contents]
+repositories = ["https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64"]
+gpgkeys = [
+  "https://raw.githubusercontent.com/microsoft/CBL-Mariner/2.0/SPECS/mariner-repos/MICROSOFT-RPM-GPG-KEY"
+]
+packages = [
+  "postgresql"
+]
+[image]
+entrypoint = ["tini", "--"]
+cmd = [ "foo" ]
+exposed_ports = ["8080/tcp"]
+
+[image.envs]
+RUST_BACKTRACE = "1"
+RUST_LOG = "hyper=info"
+```
+
+The `config` section of the OCI image spec, linked above, maps to the image section in `rpmoci.toml`.
+For example to specify image labels you can use the `image.labels` section and to specify image environment variables use `image.envs`.
+
+The PATH environment variable is set to `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` by default, but can be overridden via the `image.envs` field.
 
 #### /etc/os-release
 
@@ -168,35 +197,7 @@ Writing manifest to image destination
 Storing signatures
 ```
 
-#### Image configuration
-
-Additional [image configuration](https://github.com/opencontainers/image-spec/blob/main/config.md#properties) can be specified under the `image` key:
-
-```toml
-[contents]
-repositories = ["https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64"]
-gpgkeys = [
-  "https://raw.githubusercontent.com/microsoft/CBL-Mariner/2.0/SPECS/mariner-repos/MICROSOFT-RPM-GPG-KEY"
-]
-packages = [
-  "postgresql"
-]
-[image]
-entrypoint = ["tini", "--"]
-cmd = [ "foo" ]
-exposed_ports = ["8080/tcp"]
-
-[image.envs]
-RUST_BACKTRACE = "1"
-RUST_LOG = "hyper=info"
-```
-
-The `config` section of the OCI image spec, linked above, maps to the image section in `rpmoci.toml`.
-For example to specify image labels you can use the `image.labels` section and to specify image environment variables use `image.envs`.
-
-The PATH environment variable is set to `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` by default, but can be overridden via the `image.envs` field.
-
-### Lockfiles
+#### Lockfiles
 
 rpmoci uses DNF to produce a lockfile of the build. This can be used to subsequently repeat the build with `rpmoci build --locked`.
 
@@ -233,7 +234,15 @@ Adding gmp 6.2.1-2.cm2
 Adding bzip2-libs 1.0.8-1.cm2
 ```
 
-### Vendoring
+#### Reproducible builds
+rpmoci can produce bitwise reproducible container image builds, assuming that the RPMs can be reproducibly installed (an rpmoci build won't be reproducible if it involves RPMs that have unreproducible post-install scripts for example).
+rpmoci attempts to remove sources of non-determinism from the container image, and respects the [SOURCE_DATE_EPOCH](https://reproducible-builds.org/docs/source-date-epoch/) environment variable.
+
+When SOURCE_DATE_EPOCH is not set, the image creation time in the OCI image config is set to the current time. In this scenario rpmoci still removes non-deteministic data from the image, and the build can later be reproduced by setting SOURCE_DATE_EPOCH to the creation time of the image (by converting the timestamp in the image config to seconds since unix epoch). 
+
+This feature is only been tested on Mariner Linux, but should work when rpmoci is run on any Linux distribution that writes the rpmdb as a sqlite database to `/var/lib/rpm/rpmdb.sqlite`.
+
+#### Vendoring
 
 RPMs can be vendored to a folder using `rpmoci vendor`. A vendor folder can be used during a build to avoid contacting package repositories.
 
@@ -248,7 +257,7 @@ $ rpmoci build --image foo --tag bar --vendor-dir vendor
 *Vendor directories from different invocations of `rpmoci vendor` should be kept isolated, as rpmoci currently attempts to install all RPMs from the vendor directory.*
 
 
-### SBOM support
+#### SBOM support
 rpmoci doesn't have native SBOM support, but because it just uses standard OS package functionality SBOM generators like trivy and syft can be used to generate SBOMs for the produced images.
 
 ## Developing

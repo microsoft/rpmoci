@@ -8,6 +8,8 @@ use std::{
 
 use rpmoci::lockfile::Lockfile;
 
+use oci_spec::image::ImageIndex;
+
 // Path to rpmoci binary under test
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
 
@@ -180,6 +182,67 @@ fn test_simple_build() {
     eprintln!("stderr: {}", stderr);
     assert!(output.status.success());
     assert!(oras_status.success());
+}
+
+#[test]
+fn test_reproducible_builds() {
+    // Repeat the same build twice using same SOURCE_DATE_EPOCH and ensure the resulting images are identical
+    let root = setup_test("simple_build");
+    let source_date_epoch = "1701168547";
+    let output1 = Command::new("sudo")
+        .env("SOURCE_DATE_EPOCH", source_date_epoch)
+        .arg("--preserve-env=SOURCE_DATE_EPOCH")
+        .arg(EXE)
+        .arg("build")
+        .arg("--image=foo")
+        .arg("--tag=bar")
+        .current_dir(&root)
+        .env("NO_COLOR", "YES") // So the stderr checks below work
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output1.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(output1.status.success());
+
+    // sleep 1 second to ensure the timestamps are different
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    let output2 = Command::new("sudo")
+        .env("SOURCE_DATE_EPOCH", source_date_epoch)
+        .arg("--preserve-env=SOURCE_DATE_EPOCH")
+        .arg(EXE)
+        .arg("build")
+        .arg("--image=foo")
+        .arg("--tag=bar2")
+        .current_dir(&root)
+        .env("NO_COLOR", "YES")
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output2.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(output2.status.success());
+
+    // To inspect the digests we need to change ownership
+    let uid = nix::unistd::Uid::current();
+    let gid = nix::unistd::Gid::current();
+    let _ = Command::new("sudo")
+        .arg("chown")
+        .arg("-R")
+        .arg(format!("{}:{}", uid, gid))
+        .arg(&root)
+        .status()
+        .unwrap();
+
+    let index = ImageIndex::from_file(root.join("foo").join("index.json")).unwrap();
+    assert_eq!(index.manifests()[0].digest(), index.manifests()[1].digest());
+
+    // Cleanup using sudo
+    let _ = Command::new("sudo")
+        .arg("rm")
+        .arg("-rf")
+        .arg(&root)
+        .status()
+        .unwrap();
 }
 
 #[test]

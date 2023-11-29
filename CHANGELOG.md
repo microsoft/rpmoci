@@ -1,4 +1,6 @@
 ### Breaking Changes
+- Add runtime dependency on sqlite and build-time dependency on sqlite-devel
+
 ### Added
 ### Fixed
 
