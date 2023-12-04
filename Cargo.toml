@@ -22,7 +22,7 @@ log = "0.4.19"
 oci-spec = { version = "0.6.3", features = ["image"], default-features = false }
 openssl = "0.10.55"
 pathdiff = "0.2.1"
-pyo3 = { version = "0.19.1", features = ["auto-initialize"] }
+pyo3 = { version = "0.20.0", features = ["auto-initialize"] }
 rpm = { version = "0.12.1", default-features = false }
 serde = { version = "1.0.185", features = ["derive"] }
 serde_json = "1.0.105"
