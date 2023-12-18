@@ -14,7 +14,7 @@ repository = "https://github.com/microsoft/rpmoci"
 anyhow = "1.0.75"
 chrono = { version = "0.4.26", features = ["clock"], default-features = false }
 clap = { version = "4.3.23", features = ["derive"] }
-clap-verbosity-flag = "2.0.0"
+clap-verbosity-flag = "2.1.1"
 env_logger = "0.10.0"
 flate2 = { version = "1.0.24", features = ["zlib"], default-features = false }
 glob = "0.3.0"
