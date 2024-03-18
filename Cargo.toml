@@ -11,7 +11,7 @@ homepage = "https://github.com/microsoft/rpmoci"
 repository = "https://github.com/microsoft/rpmoci"
 
 [dependencies]
-anyhow = "1.0.75"
+anyhow = "1.0.81"
 chrono = { version = "0.4.26", features = ["clock"], default-features = false }
 clap = { version = "4.3.23", features = ["derive"] }
 clap-verbosity-flag = "2.0.0"
