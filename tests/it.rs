@@ -234,3 +234,17 @@ fn test_capabilities() {
         .contains("cap_net_admin=ep"));
     assert!(status.success());
 }
+
+#[test]
+fn test_weak_deps() {
+    // Verify a build without weak dependencies succeeds
+    let root = setup_test("weakdeps");
+    let output = Command::new(EXE)
+        .arg("build")
+        .arg("--image=weak")
+        .arg("--tag=deps")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+}

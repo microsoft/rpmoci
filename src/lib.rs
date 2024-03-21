@@ -65,7 +65,7 @@ pub fn main(command: Command) -> anyhow::Result<()> {
             let (cfg, lockfile_path, existing_lockfile) = load_config_and_lock_file(manifest_path)?;
 
             let lockfile = if let Ok(Some(lockfile)) = &existing_lockfile {
-                if lockfile.is_compatible(&cfg) && from_lockfile {
+                if lockfile.is_compatible_excluding_local_rpms(&cfg) && from_lockfile {
                     lockfile.resolve_from_previous(&cfg)?
                 } else {
                     if from_lockfile {
@@ -96,7 +96,9 @@ pub fn main(command: Command) -> anyhow::Result<()> {
             let (cfg, lockfile_path, existing_lockfile) = load_config_and_lock_file(manifest_path)?;
             let lockfile = match (existing_lockfile, locked) {
                 (Ok(Some(lockfile)), true) => {
-                    if !lockfile.is_compatible(&cfg) {
+                    // TODO: consider whether this can move to including local RPMs. (Subtlety here is that may
+                    // break scenarios where the user is using local RPMs that have a subset of the locked local RPM dependencies.)
+                    if !lockfile.is_compatible_excluding_local_rpms(&cfg) {
                         bail!(format!(
                             "the lock file {} needs to be updated but --locked was passed to prevent this",
                             lockfile_path.display()
@@ -105,7 +107,7 @@ pub fn main(command: Command) -> anyhow::Result<()> {
                     lockfile
                 }
                 (Ok(Some(lockfile)), false) => {
-                    if lockfile.all_local_deps_compatible(&cfg)? {
+                    if lockfile.is_compatible_including_local_rpms(&cfg)? {
                         // Compatible lockfile, use it
                         lockfile
                     } else {
@@ -184,7 +186,7 @@ pub fn main(command: Command) -> anyhow::Result<()> {
                 load_config_and_lock_file(manifest_path)?;
 
             if let Ok(Some(lockfile)) = existing_lockfile {
-                if lockfile.is_compatible(&cfg) {
+                if lockfile.is_compatible_excluding_local_rpms(&cfg) {
                     lockfile.download_rpms(&cfg, &out_dir)?;
                     lockfile.check_gpg_keys(&out_dir)?;
                 } else {

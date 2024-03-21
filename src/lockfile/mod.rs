@@ -21,6 +21,7 @@ use std::path::Path;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::config::install_weak_deps_default;
 use crate::write;
 use crate::{config::Config, NAME};
 
@@ -33,12 +34,18 @@ mod resolve;
 pub struct Lockfile {
     pkg_specs: Vec<String>,
     packages: BTreeSet<Package>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     local_packages: BTreeSet<LocalPackage>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     repo_gpg_config: HashMap<String, RepoKeyInfo>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     global_key_specs: Vec<url::Url>,
+    #[serde(default, skip_serializing_if = "install_weak_deps_is_default")]
+    install_weak_deps: bool,
+}
+
+fn install_weak_deps_is_default(b: &bool) -> bool {
+    *b == install_weak_deps_default()
 }
 
 /// A package that the user has specified locally
@@ -112,14 +119,22 @@ enum Algorithm {
 impl Lockfile {
     /// Returns true if the lockfile is compatible with the
     /// given configuration, false otherwise
+    ///
+    /// Local RPMs are not considered in this check, so this check can be performed
+    /// without them being present
     #[must_use]
-    pub fn is_compatible(&self, cfg: &Config) -> bool {
-        self.pkg_specs == cfg.contents.packages && self.global_key_specs == cfg.contents.gpgkeys
+    pub fn is_compatible_excluding_local_rpms(&self, cfg: &Config) -> bool {
+        self.pkg_specs == cfg.contents.packages
+            && self.global_key_specs == cfg.contents.gpgkeys
+            && self.install_weak_deps == cfg.contents.install_weak_deps
     }
 
-    /// Returns true if the lockfile is compatible with the specified configuration
-    /// and if all rpm packages required by local dependencies are included in the lockfile.
-    pub fn all_local_deps_compatible(&self, cfg: &Config) -> Result<bool> {
+    /// Returns true if the lockfile is compatible with the
+    /// given configuration, false otherwise
+    ///
+    /// This check also verifies that dependencies of local RPMs match those in the lockfile,
+    /// so requires the local RPMs to be present
+    pub fn is_compatible_including_local_rpms(&self, cfg: &Config) -> Result<bool> {
         let local_package_deps: BTreeSet<String> = self
             .local_packages
             .clone()
@@ -127,9 +142,7 @@ impl Lockfile {
             .flat_map(|p| p.requires)
             .collect();
 
-        Ok(self.pkg_specs == cfg.contents.packages
-            && self.global_key_specs == cfg.contents.gpgkeys
-            // Verify dependencies of all local packages
+        Ok(self.is_compatible_excluding_local_rpms(cfg)
             && Self::read_local_rpm_deps(cfg)? == local_package_deps)
     }
 

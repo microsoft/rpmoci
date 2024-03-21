@@ -62,9 +62,17 @@ pub(crate) struct PackageConfig {
     /// Defaults to false, to produce smaller container images.
     #[serde(default = "docs_default")]
     pub(crate) docs: bool,
+    /// Whether to install weak dependencies
+    /// Defaults to false, to produce smaller container images.
+    #[serde(default = "install_weak_deps_default")]
+    pub(crate) install_weak_deps: bool,
 }
 
 fn docs_default() -> bool {
+    false
+}
+
+pub(crate) fn install_weak_deps_default() -> bool {
     false
 }
 
@@ -91,7 +99,7 @@ pub(crate) enum Repository {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RepositoryDefinition {
-    id: Option<String>,
+    pub(crate) id: Option<String>,
     // The base url of the repository
     pub(crate) url: Url,
     /// Additional repository options.

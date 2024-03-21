@@ -1,4 +1,5 @@
 """A dependency resolver for rpmoci"""
+
 # Copyright (C) Microsoft Corporation.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -21,7 +22,7 @@ import json
 import glob
 
 
-def resolve(base, packages):
+def resolve(base, packages, ignore_weak_deps):
     """Resolves packages.
     base needs to be a dnf.Base() object that has had repos configured and fill_sack called.
     packages is an array of requested package specifications"""
@@ -32,7 +33,7 @@ def resolve(base, packages):
     for pkg in pkgs:
         goal.install(pkg)
 
-    if not goal.run():
+    if not goal.run(ignore_weak_deps=ignore_weak_deps):
         msg = dnf.util._format_resolve_problems(goal.problem_rules())
         raise dnf.exceptions.DepsolveError(msg)
 

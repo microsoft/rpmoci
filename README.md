@@ -127,6 +127,11 @@ id = "foo"
 Whether or not documentation files are included in the produced containers can be specified via the `content.docs` boolean field.
 By default documentation files are not included, optimizing for image size.
 
+#### Weak dependencies
+
+Whether or not [weak dependencies](https://docs.fedoraproject.org/en-US/packaging-guidelines/WeakDependencies/#:~:text=Weak%20dependencies%20should%20be%20used%20where%20possible%20to,require%20the%20full%20feature%20set%20of%20the%20package.) are installed in the produced containers can be specified via the `content.install_weak_deps` boolean field.
+By default weak dependencies are not included, optimizing for image size.
+
 ### Image building
 
 Running `rpmoci build --image foo --tag bar` will build a container image in OCI format.
