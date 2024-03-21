@@ -34,6 +34,7 @@ impl Lockfile {
         pkg_specs: Vec<String>,
         repositories: &[Repository],
         gpgkeys: Vec<Url>,
+        install_weak_deps: bool,
     ) -> Result<Self> {
         let output = Python::with_gil(|py| {
             // Resolve is a compiled in python module for resolving dependencies
@@ -41,7 +42,14 @@ impl Lockfile {
                 PyModule::from_code(py, include_str!("resolve.py"), "resolve", "resolve")?;
             let base = setup_base(py, repositories, &gpgkeys)?;
 
-            let args = PyTuple::new(py, &[base.to_object(py), pkg_specs.to_object(py)]);
+            let args = PyTuple::new(
+                py,
+                &[
+                    base.to_object(py),
+                    pkg_specs.to_object(py),
+                    (!install_weak_deps).to_object(py),
+                ],
+            );
             // Run the resolve function, returning a json string, which we shall deserialize.
             let val: String = resolve.getattr("resolve")?.call1(args)?.extract()?;
             Ok::<_, anyhow::Error>(val)
@@ -55,6 +63,7 @@ impl Lockfile {
             local_packages: results.local_packages.into_iter().collect(),
             repo_gpg_config: results.repo_gpg_config,
             global_key_specs: gpgkeys,
+            install_weak_deps,
         })
     }
 
@@ -64,6 +73,7 @@ impl Lockfile {
             cfg.contents.packages.clone(),
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
+            cfg.contents.install_weak_deps,
         )
     }
 
@@ -137,6 +147,7 @@ impl Lockfile {
             requires,
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
+            cfg.contents.install_weak_deps,
         )?;
         lockfile.local_packages = self.local_packages.clone();
         lockfile.pkg_specs = cfg.contents.packages.clone();
@@ -345,4 +356,49 @@ fn repo_password(repo_id: &str) -> Option<String> {
         repo_id.to_ascii_uppercase()
     ))
     .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, str::FromStr};
+
+    use url::Url;
+
+    use crate::{
+        config::{Repository, RepositoryDefinition},
+        lockfile::Lockfile,
+    };
+
+    #[test]
+    fn test_weak_deps() {
+        // prce2-tools in mariner recommends pcre2-docs. use this to test weak dep behaviour
+        let mut options = HashMap::new();
+        options.insert("gpgcheck".to_string(), "True".to_string());
+        options.insert("gpgkey".to_string(), "https://raw.githubusercontent.com/microsoft/CBL-Mariner/2.0/SPECS/mariner-repos/MICROSOFT-RPM-GPG-KEY,https://packages.microsoft.com/keys/microsoft.asc".to_string());
+
+        let mariner_repository = Repository::Definition(RepositoryDefinition {
+            id: Some("marinertest".to_string()),
+            url: Url::from_str("https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64")
+                .unwrap(),
+            options,
+        });
+        let repositories = vec![mariner_repository];
+
+        let lock = Lockfile::resolve(
+            vec!["pcre2-tools".to_string()],
+            &repositories,
+            Vec::new(),
+            true,
+        )
+        .unwrap();
+        assert!(lock.packages.iter().any(|p| p.name == "pcre2-doc"));
+        let lock = Lockfile::resolve(
+            vec!["pcre2-tools".to_string()],
+            &repositories,
+            Vec::new(),
+            false,
+        )
+        .unwrap();
+        assert!(!lock.packages.iter().any(|p| p.name == "pcre2-doc"));
+    }
 }
