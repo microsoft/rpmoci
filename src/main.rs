@@ -90,6 +90,7 @@ fn run_in_userns() -> anyhow::Result<()> {
         setup_id_maps(child, user_id, group_id).context("Failed to setup uid/gid mappings")
     {
         signal::kill(child, Signal::SIGTERM)?;
+        waitpid(child, None)?;
         return Err(e);
     }
     close(writer)?;
