@@ -48,7 +48,7 @@ jobs:
           echo "rootless:100000:65536" > /etc/subuid
       - name: Build in rootless mode
         run: |
-          su -rootless
+          su - rootless
           cargo run -- build -f tests/fixtures/rootless/rpmoci.toml --image rootless --tag test
 
   cargo-deny:
