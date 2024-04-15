@@ -196,11 +196,12 @@ pub(crate) fn setup_base<'a>(
     let base = dnf.getattr("Base")?.call0()?;
     let conf = base.getattr("conf")?;
 
-    // Set the cache dir to the value of RPMOCI_CACHE_DIR if it's set.
-    // rpmoci itself will set that when running in rootless mode so
-    // to somewhere in the original user's home directory
+    // Set up caching and log dir to the value of RPMOCI_CACHE_DIR if it's set.
+    // When running in rootless mode rpmoci will set that, otherwise dnf will select
+    // diretory the user can't write to.
     if let Ok(cache_dir) = env::var("RPMOCI_CACHE_DIR") {
-        conf.setattr("cachedir", cache_dir)?;
+        conf.setattr("cachedir", &cache_dir)?;
+        conf.setattr("logdir", &cache_dir)?;
     }
 
     base.call_method0("init_plugins")?;

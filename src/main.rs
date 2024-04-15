@@ -24,10 +24,11 @@ use nix::{
             self,
             Signal::{self, SIGCHLD},
         },
-        wait::wait,
+        wait::waitpid,
     },
     unistd::{close, getgid, getuid, pipe, read},
 };
+use pyo3::{types::PyModule, Python};
 use rpmoci::{subid::setup_id_maps, write};
 
 fn main() {
@@ -49,10 +50,8 @@ fn run_in_userns() -> anyhow::Result<()> {
 
     let user_id = getuid();
     let group_id = getgid();
-    // dnf chooses a root-writable cache directory by default. It's unlikely that
-    // the current user will be able to write there, so we configure the RPMOCI_CACHE_DIR
-    // to point to a cache directory in the current user's home directory.
-    let cache_dir = dirs::cache_dir().unwrap().join("rpmoci");
+    let cache_dir =
+        get_cache_dir().context("Failed to determine a user-writable cache dir for dnf")?;
 
     const STACK_SIZE: usize = 1024 * 1024;
     let stack: &mut [u8; STACK_SIZE] = &mut [0; STACK_SIZE];
@@ -94,7 +93,7 @@ fn run_in_userns() -> anyhow::Result<()> {
         return Err(e);
     }
     close(writer)?;
-    let status = wait()?;
+    let status = waitpid(child, None)?;
     if let nix::sys::wait::WaitStatus::Exited(_, code) = status {
         // Exit immediately with the child's exit code, as the child should have
         // have already printed any error messages on completion
@@ -104,13 +103,24 @@ fn run_in_userns() -> anyhow::Result<()> {
     }
 }
 
+fn get_cache_dir() -> Result<String> {
+    Python::with_gil(|py| {
+        let misc = PyModule::import(py, "dnf.yum.misc")?;
+        misc.call_method0("getCacheDir")?;
+        Ok(misc.getattr("getCacheDir")?.call0()?.extract()?)
+    })
+}
+
 fn try_main() -> Result<()> {
     let args = rpmoci::cli::Cli::parse();
     env_logger::Builder::new()
         .filter_level(args.verbose.log_level_filter())
         .init();
 
-    if !getuid().is_root() {
+    // `rpmoci build` is the only command that needs to run as root.
+    // If a user specifies this command when running as a non-root user, then try and run
+    // in rootless mode using a user namespace
+    if matches!(args.command, rpmoci::cli::Command::Build { .. }) && !getuid().is_root() {
         run_in_userns().context("Failed to run rpmoci in rootless mode. See https://github.com/microsoft/rpmoci#rootless-setup, or re-run as root")?;
     }
     rpmoci::main(args.command)

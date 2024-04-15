@@ -26,9 +26,10 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/cbl-mariner/base/core:2.0
+      options: --privileged
     steps:
       - name: Install dependencies
-        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf moby-cli skopeo sqlite-devel
+        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf moby-cli skopeo shadow-utils sqlite-devel
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -40,6 +41,15 @@ jobs:
           version: 1.1.0
       - name: Run cargo test
         run: cargo test --features test-docker
+      - name: Setup rootless user
+        run: |
+          useradd -m -s /bin/bash rootless
+          echo "rootless:100000:65536" > /etc/subgid
+          echo "rootless:100000:65536" > /etc/subuid
+      - name: Build in rootless mode
+        run: |
+          su -rootless
+          cargo run -- build -f tests/fixtures/rootless/rpmoci.toml --image rootless --tag test
 
   cargo-deny:
     runs-on: ubuntu-22.04
@@ -53,7 +63,7 @@ jobs:
       image: mcr.microsoft.com/cbl-mariner/base/core:2.0
     steps:
       - name: Install dependencies
-        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf sqlite-devel
+        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf sqlite-devel shadow-utils 
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:

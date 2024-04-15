@@ -65,13 +65,13 @@ pub fn setup_id_maps(child: Pid, uid: Uid, gid: Gid) -> anyhow::Result<()> {
     if subuid_count < 1000 {
         write::error(
             "Error",
-            "At least 999 subuids must be configured for the current user in /etc/subuid",
+            "At least 1000 subuids must be configured for the current user in /etc/subuid",
         )?;
     }
     if subgid_count < 1000 {
         write::error(
             "Error",
-            "At least 999 subgids must be configured for the current group in /etc/subgid",
+            "At least 1000 subgids must be configured for the current group in /etc/subgid",
         )?;
     }
     if subuid_count < 1000 || subgid_count < 1000 {

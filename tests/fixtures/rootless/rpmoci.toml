@@ -1,0 +1,5 @@
+[contents]
+repositories = ["mariner-official-base"]
+packages = ["tini-static"]
+[image]
+entrypoint = ["/usr/bin/tini-static", "--"]
