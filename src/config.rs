@@ -58,14 +58,24 @@ pub(crate) struct PackageConfig {
     pub(crate) packages: Vec<String>,
     #[serde(default)]
     pub(crate) gpgkeys: Vec<Url>,
-    /// Whether to install documentation files
+    /// Whether to install documentation files.
     /// Defaults to false, to produce smaller container images.
     #[serde(default = "docs_default")]
     pub(crate) docs: bool,
+    /// Whether to include /etc/os-release as a dependency.
+    /// Defaults to true, so that scanning tools can detect
+    /// the distro of images produced by rpmoci without users
+    /// needing to add the <distro>-release package.
+    #[serde(default = "os_release_default")]
+    pub(crate) os_release: bool,
 }
 
 fn docs_default() -> bool {
     false
+}
+
+fn os_release_default() -> bool {
+    true
 }
 
 /// Configuration file for rpmoci

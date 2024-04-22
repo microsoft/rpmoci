@@ -78,20 +78,20 @@ struct RepoKeyInfo {
 
 /// A resolved package
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Ord)]
-struct Package {
+pub struct Package {
     /// The package name
-    name: String,
+    pub name: String,
     /// The package epoch-version-release
-    evr: String,
+    pub evr: String,
     /// The package checksum
-    checksum: Checksum,
+    pub checksum: Checksum,
     /// The id of the package's repository
-    repoid: String,
+    pub repoid: String,
 }
 
 /// Checksum of RPM package
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Ord)]
-struct Checksum {
+pub struct Checksum {
     /// The algorithm of the checksum
     algorithm: Algorithm,
     /// The checksum value
@@ -101,11 +101,16 @@ struct Checksum {
 /// Algorithms supported by RPM for checksums
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, PartialOrd, Eq, Ord)]
 #[serde(rename_all = "lowercase")]
-enum Algorithm {
-    MD5,  //Devskim: ignore DS126858
+pub enum Algorithm {
+    /// The MD5 algorithm
+    MD5, //Devskim: ignore DS126858
+    /// The SHA1 algorithm
     SHA1, //Devskim: ignore DS126858
+    /// The SHA256 algorithm
     SHA256,
+    /// The SHA384 algorithm
     SHA384,
+    /// The SHA512 algorithm
     SHA512,
 }
 
@@ -178,5 +183,10 @@ impl Lockfile {
         }
 
         Ok(())
+    }
+
+    /// Returns an iterator over the packages in the Lockfile
+    pub fn iter_packages(&self) -> impl Iterator<Item = &Package> {
+        self.packages.iter()
     }
 }

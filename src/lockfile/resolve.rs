@@ -31,15 +31,21 @@ use crate::config::Repository;
 impl Lockfile {
     /// Perform dependency resolution on the given package specs
     pub(crate) fn resolve(
-        pkg_specs: Vec<String>,
+        mut pkg_specs: Vec<String>,
         repositories: &[Repository],
         gpgkeys: Vec<Url>,
+        include_etc_os_release: bool,
     ) -> Result<Self> {
         let output = Python::with_gil(|py| {
             // Resolve is a compiled in python module for resolving dependencies
             let resolve =
                 PyModule::from_code(py, include_str!("resolve.py"), "resolve", "resolve")?;
             let base = setup_base(py, repositories, &gpgkeys)?;
+
+            let etc_os_release = "/etc/os-release".to_string();
+            if include_etc_os_release && !pkg_specs.contains(&etc_os_release) {
+                pkg_specs.push(etc_os_release);
+            }
 
             let args = PyTuple::new(py, &[base.to_object(py), pkg_specs.to_object(py)]);
             // Run the resolve function, returning a json string, which we shall deserialize.
@@ -64,6 +70,7 @@ impl Lockfile {
             cfg.contents.packages.clone(),
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
+            cfg.contents.os_release,
         )
     }
 
@@ -137,6 +144,7 @@ impl Lockfile {
             requires,
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
+            cfg.contents.os_release,
         )?;
         lockfile.local_packages = self.local_packages.clone();
         lockfile.pkg_specs = cfg.contents.packages.clone();
