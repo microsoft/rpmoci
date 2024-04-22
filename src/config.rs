@@ -62,7 +62,7 @@ pub(crate) struct PackageConfig {
     /// Defaults to false, to produce smaller container images.
     #[serde(default = "docs_default")]
     pub(crate) docs: bool,
-    /// Whether to include /etc/os-release as a dependency.
+    /// Whether to include /etc/os-release as a dependency during dependency resolution.
     /// Defaults to true, so that scanning tools can detect
     /// the distro of images produced by rpmoci without users
     /// needing to add the <distro>-release package.

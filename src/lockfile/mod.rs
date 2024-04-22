@@ -132,8 +132,7 @@ impl Lockfile {
             .flat_map(|p| p.requires)
             .collect();
 
-        Ok(self.pkg_specs == cfg.contents.packages
-            && self.global_key_specs == cfg.contents.gpgkeys
+        Ok(self.is_compatible(cfg)
             // Verify dependencies of all local packages
             && Self::read_local_rpm_deps(cfg)? == local_package_deps)
     }
