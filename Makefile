@@ -5,9 +5,12 @@ all: clean rpm oci
 clean:
 	rm -rf out
 
+NOTICE:
+	cargo about generate about.hbs > NOTICE
+
 # CARGO_TARGET_DIR faff is to workaround https://github.com/cat-in-136/cargo-generate-rpm/issues/77 for
 # maintainers who set CARGO_TARGET_DIR in their environment
-rpm: clean
+rpm: clean NOTICE
 	cargo build --release
 	mkdir -p target/release/
 	cp $(CARGO_TARGET_DIR)/release/rpmoci target/release/ || /bin/true

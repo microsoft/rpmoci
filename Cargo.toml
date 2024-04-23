@@ -38,6 +38,7 @@ xattr = "1.0.1"
 assets = [
     { source = "target/release/rpmoci", dest = "/usr/bin/rpmoci", mode = "0755" },
     { source = "LICENSE", dest = "/usr/share/doc/rpmoci/LICENSE", doc = true, mode = "0644" },
+    { source = "NOTICE", dest = "/usr/share/doc/rpmoci/NOTICE", doc = true, mode = "0644" },
 ]
 require-sh = false
 
