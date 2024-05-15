@@ -265,3 +265,17 @@ fn test_no_auto_etc_os_release() {
         .iter_packages()
         .any(|p| p.name == "mariner-release"));
 }
+
+#[test]
+fn test_explicit_etc_os_release() {
+    // Test that resolution works when /etc/os-release explicitly added
+    let root = setup_test("etc_os_release_explicit");
+    let output = Command::new(EXE)
+        .arg("update")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
+    assert!(output.status.success());
+}
