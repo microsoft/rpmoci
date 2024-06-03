@@ -6,6 +6,8 @@ use std::{
     process::Command,
 };
 
+use rpmoci::lockfile::Lockfile;
+
 // Path to rpmoci binary under test
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
 
@@ -158,6 +160,14 @@ fn test_simple_build() {
         .status()
         .unwrap();
 
+    // Open the lockfile and verify /etc/os-release was included as a dependency
+    let lockfile_path = root.join("rpmoci.lock");
+    eprintln!("lockfile_path: {}", lockfile_path.display());
+    let lockfile: Lockfile = toml::from_str(&fs::read_to_string(lockfile_path).unwrap()).unwrap();
+    assert!(lockfile
+        .iter_packages()
+        .any(|p| p.name == "mariner-release"));
+
     // Cleanup using sudo
     let _ = Command::new("sudo")
         .arg("rm")
@@ -233,4 +243,39 @@ fn test_capabilities() {
         .unwrap()
         .contains("cap_net_admin=ep"));
     assert!(status.success());
+}
+
+#[test]
+fn test_no_auto_etc_os_release() {
+    // Test that `contents.os_release = false` works
+    let root = setup_test("no_auto_etc_os_release");
+    let output = Command::new(EXE)
+        .arg("update")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
+    assert!(output.status.success());
+    // Open the lockfile and verify /etc/os-release was not added as a dependency
+    let lockfile_path = root.join("rpmoci.lock");
+    eprintln!("lockfile_path: {}", lockfile_path.display());
+    let lockfile: Lockfile = toml::from_str(&fs::read_to_string(lockfile_path).unwrap()).unwrap();
+    assert!(!lockfile
+        .iter_packages()
+        .any(|p| p.name == "mariner-release"));
+}
+
+#[test]
+fn test_explicit_etc_os_release() {
+    // Test that resolution works when /etc/os-release explicitly added
+    let root = setup_test("etc_os_release_explicit");
+    let output = Command::new(EXE)
+        .arg("update")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
+    assert!(output.status.success());
 }

@@ -28,12 +28,15 @@ use super::{DnfOutput, Lockfile};
 use crate::config::Config;
 use crate::config::Repository;
 
+const ETC_OS_RELEASE: &str = "/etc/os-release";
+
 impl Lockfile {
     /// Perform dependency resolution on the given package specs
     pub(crate) fn resolve(
         pkg_specs: Vec<String>,
         repositories: &[Repository],
         gpgkeys: Vec<Url>,
+        include_etc_os_release: bool,
     ) -> Result<Self> {
         let output = Python::with_gil(|py| {
             // Resolve is a compiled in python module for resolving dependencies
@@ -41,7 +44,16 @@ impl Lockfile {
                 PyModule::from_code(py, include_str!("resolve.py"), "resolve", "resolve")?;
             let base = setup_base(py, repositories, &gpgkeys)?;
 
-            let args = PyTuple::new(py, &[base.to_object(py), pkg_specs.to_object(py)]);
+            let etc_os_release = ETC_OS_RELEASE.to_string();
+            let specs = if include_etc_os_release && !pkg_specs.contains(&etc_os_release) {
+                let mut specs = pkg_specs.clone();
+                specs.push(etc_os_release.to_string());
+                specs
+            } else {
+                pkg_specs.clone()
+            };
+
+            let args = PyTuple::new(py, &[base.to_object(py), specs.to_object(py)]);
             // Run the resolve function, returning a json string, which we shall deserialize.
             let val: String = resolve.getattr("resolve")?.call1(args)?.extract()?;
             Ok::<_, anyhow::Error>(val)
@@ -64,6 +76,7 @@ impl Lockfile {
             cfg.contents.packages.clone(),
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
+            cfg.contents.os_release,
         )
     }
 
@@ -137,9 +150,10 @@ impl Lockfile {
             requires,
             &cfg.contents.repositories,
             cfg.contents.gpgkeys.clone(),
+            cfg.contents.os_release,
         )?;
-        lockfile.local_packages = self.local_packages.clone();
-        lockfile.pkg_specs = cfg.contents.packages.clone();
+        lockfile.local_packages.clone_from(&self.local_packages);
+        lockfile.pkg_specs.clone_from(&cfg.contents.packages);
         Ok(lockfile)
     }
 }

@@ -127,6 +127,14 @@ id = "foo"
 Whether or not documentation files are included in the produced containers can be specified via the `content.docs` boolean field.
 By default documentation files are not included, optimizing for image size.
 
+#### /etc/os-release
+
+Whether `/etc/os-release` is automatically included as a dependency during resolution, hence installed in the produced image, can be specified via the `content.os_release` boolean field.
+This enables SBOM and vulnerability scanning tools to better determine the provenance of packages within the image.
+By default this field is enabled.
+
+*The /etc/os-release file can also be included by adding the distro's `<distro>-release` package to the packages array: this field exists to ensure the /etc/os-release file is included by default.*
+
 ### Image building
 
 Running `rpmoci build --image foo --tag bar` will build a container image in OCI format.
@@ -242,8 +250,6 @@ $ rpmoci build --image foo --tag bar --vendor-dir vendor
 
 ### SBOM support
 rpmoci doesn't have native SBOM support, but because it just uses standard OS package functionality SBOM generators like trivy and syft can be used to generate SBOMs for the produced images.
-
-*For these tools to detect the Linux distribution correctly you may need to install the `<distro>-release` package in the image.*
 
 ## Developing
 
