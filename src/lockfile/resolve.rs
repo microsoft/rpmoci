@@ -152,8 +152,8 @@ impl Lockfile {
             cfg.contents.gpgkeys.clone(),
             cfg.contents.os_release,
         )?;
-        lockfile.local_packages = self.local_packages.clone();
-        lockfile.pkg_specs = cfg.contents.packages.clone();
+        lockfile.local_packages.clone_from(&self.local_packages);
+        lockfile.pkg_specs.clone_from(&cfg.contents.packages);
         Ok(lockfile)
     }
 }
