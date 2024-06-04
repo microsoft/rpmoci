@@ -8,6 +8,8 @@ use std::{
 
 use rpmoci::lockfile::Lockfile;
 
+use oci_spec::image::ImageIndex;
+
 // Path to rpmoci binary under test
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
 
@@ -134,12 +136,17 @@ fn test_update_from_lockfile() {
     assert!(stderr.contains("Updating dnf 4.8.0-1.cm2 -> "));
 }
 
+// Do a simple container image build, verifying the reproducibility and /etc/os-release dependency.
 // This test requires oras be installed, to check that the produced images are
 // compatible with another OCI tool.
 #[test]
 fn test_simple_build() {
+    // Repeat the same build twice using same SOURCE_DATE_EPOCH and ensure the resulting images are identical
     let root = setup_test("simple_build");
-    let output = Command::new("sudo")
+    let source_date_epoch = "1701168547";
+    let output1 = Command::new("sudo")
+        .env("SOURCE_DATE_EPOCH", source_date_epoch)
+        .arg("--preserve-env=SOURCE_DATE_EPOCH")
         .arg(EXE)
         .arg("build")
         .arg("--image=foo")
@@ -148,6 +155,9 @@ fn test_simple_build() {
         .env("NO_COLOR", "YES") // So the stderr checks below work
         .output()
         .unwrap();
+    let stderr = std::str::from_utf8(&output1.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(output1.status.success());
 
     let oras_status = Command::new("sudo")
         .arg("oras")
@@ -168,6 +178,42 @@ fn test_simple_build() {
         .iter_packages()
         .any(|p| p.name == "mariner-release"));
 
+    let stderr = std::str::from_utf8(&output1.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(output1.status.success());
+    assert!(oras_status.success());
+
+    // Repeat the build, to ensure reproducing the same image works
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let output2 = Command::new("sudo")
+        .env("SOURCE_DATE_EPOCH", source_date_epoch)
+        .arg("--preserve-env=SOURCE_DATE_EPOCH")
+        .arg(EXE)
+        .arg("build")
+        .arg("--image=foo")
+        .arg("--tag=bar2")
+        .current_dir(&root)
+        .env("NO_COLOR", "YES")
+        .output()
+        .unwrap();
+    let stderr = std::str::from_utf8(&output2.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(output2.status.success());
+
+    // To inspect the digests we need to change ownership
+    let uid = nix::unistd::Uid::current();
+    let gid = nix::unistd::Gid::current();
+    let _ = Command::new("sudo")
+        .arg("chown")
+        .arg("-R")
+        .arg(format!("{}:{}", uid, gid))
+        .arg(&root)
+        .status()
+        .unwrap();
+
+    let index = ImageIndex::from_file(root.join("foo").join("index.json")).unwrap();
+    assert_eq!(index.manifests()[0].digest(), index.manifests()[1].digest());
+
     // Cleanup using sudo
     let _ = Command::new("sudo")
         .arg("rm")
@@ -175,11 +221,6 @@ fn test_simple_build() {
         .arg(&root)
         .status()
         .unwrap();
-
-    let stderr = std::str::from_utf8(&output.stderr).unwrap();
-    eprintln!("stderr: {}", stderr);
-    assert!(output.status.success());
-    assert!(oras_status.success());
 }
 
 #[test]

@@ -16,6 +16,7 @@ chrono = { version = "0.4.26", features = ["clock"], default-features = false }
 clap = { version = "4.3.23", features = ["derive"] }
 clap-verbosity-flag = "2.0.0"
 env_logger = "0.11.3"
+filetime = "0.2.22"
 flate2 = { version = "1.0.24", features = ["zlib"], default-features = false }
 glob = "0.3.0"
 log = "0.4.19"
@@ -24,6 +25,7 @@ openssl = "0.10.63"
 pathdiff = "0.2.1"
 pyo3 = { version = "0.20.0", features = ["auto-initialize"] }
 rpm = { version = "0.14.0", default-features = false }
+rusqlite = "0.30.0"
 serde = { version = "1.0.185", features = ["derive"] }
 serde_json = "1.0.105"
 tar = "0.4.38"
@@ -47,3 +49,6 @@ dnf = "*"
 [features]
 # The "test-docker" feature is used to run integration tests requiring skopeo and docker
 test-docker = []
+
+[dev-dependencies]
+nix = { version = "0.27.1", default-features = false, features = ["user"] }

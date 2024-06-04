@@ -3,7 +3,7 @@ CARGO_TARGET_DIR?=target
 all: clean rpm oci
 
 clean:
-	rm -rf out
+	sudo rm -rf out
 
 # CARGO_TARGET_DIR faff is to workaround https://github.com/cat-in-136/cargo-generate-rpm/issues/77 for
 # maintainers who set CARGO_TARGET_DIR in their environment

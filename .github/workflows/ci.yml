@@ -9,7 +9,7 @@ jobs:
       image: mcr.microsoft.com/cbl-mariner/base/core:2.0
     steps:
       - name: Install dependencies
-        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf
+        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf sqlite-devel
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -28,7 +28,7 @@ jobs:
       image: mcr.microsoft.com/cbl-mariner/base/core:2.0
     steps:
       - name: Install dependencies
-        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf moby-cli skopeo
+        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf moby-cli skopeo sqlite-devel
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -53,7 +53,7 @@ jobs:
       image: mcr.microsoft.com/cbl-mariner/base/core:2.0
     steps:
       - name: Install dependencies
-        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf
+        run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf sqlite-devel
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:

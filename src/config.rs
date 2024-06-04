@@ -144,6 +144,7 @@ impl ImageConfig {
     pub(crate) fn to_oci_image_configuration(
         &self,
         cli_labels: HashMap<String, String>,
+        creation_time: chrono::DateTime<chrono::Utc>,
     ) -> Result<ImageConfiguration, OciSpecError> {
         let ImageConfig {
             user,
@@ -193,7 +194,7 @@ impl ImageConfig {
             .config(config)
             .architecture(Arch::Amd64)
             .os(Os::Linux)
-            .created(chrono::Utc::now().to_rfc3339());
+            .created(creation_time.to_rfc3339());
         if let Some(author) = author {
             builder = builder.author(author);
         }
@@ -289,7 +290,7 @@ mod tests {
         let config: oci_spec::image::ImageConfiguration =
             toml::from_str::<ImageConfig>(config_with_path)
                 .unwrap()
-                .to_oci_image_configuration(HashMap::new())
+                .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
                 .unwrap();
         let envs = config.config().as_ref().unwrap().env().as_ref().unwrap();
         assert!(envs.iter().any(|e| e == "PATH=/usr/bin"));
@@ -301,7 +302,7 @@ mod tests {
         let config: oci_spec::image::ImageConfiguration =
             toml::from_str::<ImageConfig>(config_without_path)
                 .unwrap()
-                .to_oci_image_configuration(HashMap::new())
+                .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
                 .unwrap();
         let envs = config.config().as_ref().unwrap().env().as_ref().unwrap();
         assert!(envs
@@ -318,7 +319,7 @@ mod tests {
         // No additional labels
         let config: oci_spec::image::ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
             .unwrap()
-            .to_oci_image_configuration(HashMap::new())
+            .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
             .unwrap();
         let labels = config.config().as_ref().unwrap().labels().as_ref().unwrap();
         assert_eq!(labels.get("foo.bar").unwrap(), "baz");
@@ -332,7 +333,7 @@ mod tests {
         .collect();
         let config: oci_spec::image::ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
             .unwrap()
-            .to_oci_image_configuration(extra_labels)
+            .to_oci_image_configuration(extra_labels, chrono::Utc::now())
             .unwrap();
         let labels = config.config().as_ref().unwrap().labels().as_ref().unwrap();
         assert_eq!(labels.get("foo.bar").unwrap(), "qux");
