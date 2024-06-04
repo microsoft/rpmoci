@@ -101,7 +101,7 @@ pub(crate) enum Repository {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RepositoryDefinition {
-    id: Option<String>,
+    pub(crate) id: Option<String>,
     // The base url of the repository
     pub(crate) url: Url,
     /// Additional repository options.

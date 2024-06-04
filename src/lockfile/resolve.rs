@@ -360,3 +360,40 @@ fn repo_password(repo_id: &str) -> Option<String> {
     ))
     .ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, str::FromStr};
+
+    use url::Url;
+
+    use crate::{
+        config::{Repository, RepositoryDefinition},
+        lockfile::Lockfile,
+    };
+
+    #[test]
+    fn test_weak_deps() {
+        // prce2-tools in mariner recommends pcre2-docs. use this to test weak dep behaviour
+        let mut options = HashMap::new();
+        options.insert("gpgcheck".to_string(), "True".to_string());
+        options.insert("gpgkey".to_string(), "https://raw.githubusercontent.com/microsoft/CBL-Mariner/2.0/SPECS/mariner-repos/MICROSOFT-RPM-GPG-KEY,https://packages.microsoft.com/keys/microsoft.asc".to_string());
+
+        let mariner_repository = Repository::Definition(RepositoryDefinition {
+            id: Some("marinertest".to_string()),
+            url: Url::from_str("https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64")
+                .unwrap(),
+            options,
+        });
+        let repositories = vec![mariner_repository];
+
+        let lock = Lockfile::resolve(
+            vec!["pcre2-tools".to_string()],
+            &repositories,
+            Vec::new(),
+            true,
+        )
+        .unwrap();
+        assert!(!lock.packages.iter().any(|p| p.name == "pcre2-doc"));
+    }
+}

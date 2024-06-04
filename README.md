@@ -164,6 +164,10 @@ By default this field is enabled.
 
 *The /etc/os-release file can also be included by adding the distro's `<distro>-release` package to the packages array: this field exists to ensure the /etc/os-release file is included by default.*
 
+#### Weak dependencies
+
+rpmoci does not install [weak dependencies](https://docs.fedoraproject.org/en-US/packaging-guidelines/WeakDependencies/#:~:text=Weak%20dependencies%20should%20be%20used%20where%20possible%20to,require%20the%20full%20feature%20set%20of%20the%20package.), optimizing for small container image sizes.
+
 ### Image building
 
 Running `rpmoci build --image foo --tag bar` will build a container image in OCI format.

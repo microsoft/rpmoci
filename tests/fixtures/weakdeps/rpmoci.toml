@@ -1,0 +1,10 @@
+[contents]
+repositories = [
+    "https://packages.microsoft.com/cbl-mariner/2.0/prod/base/x86_64",
+]
+gpgkeys = [
+    "https://raw.githubusercontent.com/microsoft/CBL-Mariner/2.0/SPECS/mariner-repos/MICROSOFT-RPM-GPG-KEY",
+    "https://packages.microsoft.com/keys/microsoft.asc",
+]
+# This has a weak dependency on pcre2-docs 
+packages = ["pcre2-tools"]

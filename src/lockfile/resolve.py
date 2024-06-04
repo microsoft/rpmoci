@@ -1,4 +1,5 @@
 """A dependency resolver for rpmoci"""
+
 # Copyright (C) Microsoft Corporation.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,7 +33,7 @@ def resolve(base, packages):
     for pkg in pkgs:
         goal.install(pkg)
 
-    if not goal.run():
+    if not goal.run(ignore_weak_deps=True):
         msg = dnf.util._format_resolve_problems(goal.problem_rules())
         raise dnf.exceptions.DepsolveError(msg)
 
