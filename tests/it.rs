@@ -174,7 +174,7 @@ fn test_simple_build() {
     let _ = Command::new("sudo")
         .arg("rm")
         .arg("-rf")
-        .arg(&root)
+        .arg(&root.join("foo"))
         .status()
         .unwrap();
 
