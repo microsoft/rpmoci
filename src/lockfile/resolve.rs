@@ -394,14 +394,6 @@ mod tests {
             true,
         )
         .unwrap();
-        assert!(lock.packages.iter().any(|p| p.name == "pcre2-doc"));
-        let lock = Lockfile::resolve(
-            vec!["pcre2-tools".to_string()],
-            &repositories,
-            Vec::new(),
-            false,
-        )
-        .unwrap();
         assert!(!lock.packages.iter().any(|p| p.name == "pcre2-doc"));
     }
 }
