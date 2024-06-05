@@ -36,7 +36,7 @@ impl Lockfile {
         Python::with_gil(|py| {
             let base = setup_base(py, repositories, &cfg.contents.gpgkeys)?;
             let download =
-                PyModule::from_code(py, include_str!("download.py"), "resolve", "resolve")?;
+                PyModule::from_code_bound(py, include_str!("download.py"), "resolve", "resolve")?;
 
             let packages = self
                 .packages
@@ -44,7 +44,7 @@ impl Lockfile {
                 .map(|p| (p.name.clone(), p.evr.clone(), p.checksum.checksum.clone()))
                 .collect::<Vec<_>>();
 
-            let args = PyTuple::new(
+            let args = PyTuple::new_bound(
                 py,
                 &[
                     base.to_object(py),

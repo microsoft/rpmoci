@@ -41,7 +41,7 @@ impl Lockfile {
         let output = Python::with_gil(|py| {
             // Resolve is a compiled in python module for resolving dependencies
             let resolve =
-                PyModule::from_code(py, include_str!("resolve.py"), "resolve", "resolve")?;
+                PyModule::from_code_bound(py, include_str!("resolve.py"), "resolve", "resolve")?;
             let base = setup_base(py, repositories, &gpgkeys)?;
 
             let etc_os_release = ETC_OS_RELEASE.to_string();
@@ -53,7 +53,7 @@ impl Lockfile {
                 pkg_specs.clone()
             };
 
-            let args = PyTuple::new(py, &[base.to_object(py), specs.to_object(py)]);
+            let args = PyTuple::new_bound(py, &[base.to_object(py), specs.to_object(py)]);
             // Run the resolve function, returning a json string, which we shall deserialize.
             let val: String = resolve.getattr("resolve")?.call1(args)?.extract()?;
             Ok::<_, anyhow::Error>(val)
@@ -110,14 +110,14 @@ impl Lockfile {
 
         let output = Python::with_gil(|py| {
             // query_local is a compiled in python module for querying local dependencies
-            let query = PyModule::from_code(
+            let query = PyModule::from_code_bound(
                 py,
                 include_str!("query_local.py"),
                 "query_local",
                 "query_local",
             )?;
 
-            let args = PyTuple::new(py, &[local.to_object(py)]);
+            let args = PyTuple::new_bound(py, &[local.to_object(py)]);
             // Run the query function, returning a json string, which we shall deserialize.
             let val: String = query.getattr("query_local")?.call1(args)?.extract()?;
             Ok::<_, anyhow::Error>(val)
@@ -160,11 +160,11 @@ impl Lockfile {
 
 /// A wrapper around the dnf.Base object which ensures that plugins are unloaded
 pub(crate) struct Base<'a> {
-    value: &'a PyAny,
+    value: Bound<'a, PyAny>,
 }
 
 impl<'a> Deref for Base<'a> {
-    type Target = &'a PyAny;
+    type Target = Bound<'a, PyAny>;
 
     fn deref(&self) -> &Self::Target {
         &self.value
@@ -192,7 +192,7 @@ pub(crate) fn setup_base<'a>(
     repositories: &[Repository],
     gpgkeys: &[Url],
 ) -> Result<Base<'a>> {
-    let dnf = PyModule::import(py, "dnf")?;
+    let dnf = PyModule::import_bound(py, "dnf")?;
     let base = dnf.getattr("Base")?.call0()?;
     let conf = base.getattr("conf")?;
 
@@ -242,10 +242,10 @@ pub(crate) fn setup_base<'a>(
 
     // Now configure any repositories defined by URL/definition
     for repo in repositories {
-        let args = PyTuple::new(
+        let args = PyTuple::new_bound(
             py,
             &[
-                PyString::new(py, &repo.repo_id()).to_object(py),
+                PyString::new_bound(py, &repo.repo_id()).to_object(py),
                 conf.to_object(py),
             ],
         );
@@ -254,7 +254,7 @@ pub(crate) fn setup_base<'a>(
                 base.getattr("repos")?.call_method(
                     "add_new_repo",
                     args,
-                    Some(repo_kwargs(
+                    Some(&repo_kwargs(
                         url,
                         &HashMap::new(),
                         gpgkeys,
@@ -269,7 +269,7 @@ pub(crate) fn setup_base<'a>(
                 base.getattr("repos")?.call_method(
                     "add_new_repo",
                     args,
-                    Some(repo_kwargs(
+                    Some(&repo_kwargs(
                         &definition.url,
                         &definition.options,
                         gpgkeys,
@@ -287,7 +287,7 @@ pub(crate) fn setup_base<'a>(
     base.call_method(
         "fill_sack",
         (),
-        Some([("load_system_repo", false)].into_py_dict(py)),
+        Some(&[("load_system_repo", false)].into_py_dict_bound(py)),
     )?;
     Ok(Base { value: base })
 }
@@ -306,7 +306,7 @@ pub(crate) fn repo_kwargs<'p>(
     username: Option<String>,
     password: Option<String>,
     py: Python<'p>,
-) -> &'p PyDict {
+) -> Bound<'p, PyDict> {
     let mut kwargs = Vec::new();
     let mut default_repo_options = default_repo_options();
 
@@ -322,7 +322,7 @@ pub(crate) fn repo_kwargs<'p>(
 
     kwargs.push((
         "baseurl".to_string(),
-        [PyString::new(py, repo_url.as_ref())].to_object(py),
+        [PyString::new_bound(py, repo_url.as_ref())].to_object(py),
     ));
 
     for (key, val) in repo_options {
@@ -350,7 +350,7 @@ pub(crate) fn repo_kwargs<'p>(
         kwargs.push(("password".to_string(), password.to_object(py)));
     }
 
-    kwargs.into_py_dict(py)
+    kwargs.into_py_dict_bound(py)
 }
 
 fn repo_username(repo_id: &str) -> Option<String> {
