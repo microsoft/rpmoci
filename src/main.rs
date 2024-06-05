@@ -41,7 +41,7 @@ fn main() {
     }
 }
 
-fn run_in_userns() -> anyhow::Result<()> {
+unsafe fn run_in_userns() -> anyhow::Result<()> {
     // dnf needs to be run as root, but given that rpmoci only needs to query package repos
     // and/or install packages into an install root, we can run in a user namespace, mapping
     // the current uid/gid to root
@@ -122,7 +122,9 @@ fn try_main() -> Result<()> {
     // If a user specifies this command when running as a non-root user, then try and run
     // in rootless mode using a user namespace
     if matches!(args.command, rpmoci::cli::Command::Build { .. }) && !getuid().is_root() {
-        run_in_userns().context("Failed to run rpmoci in rootless mode. See https://github.com/microsoft/rpmoci#rootless-setup, or re-run as root")?;
+        unsafe {
+            run_in_userns().context("Failed to run rpmoci in rootless mode. See https://github.com/microsoft/rpmoci#rootless-setup, or re-run as root")?;
+        }
     }
     rpmoci::main(args.command)
 }
