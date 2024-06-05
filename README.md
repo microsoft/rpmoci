@@ -5,8 +5,8 @@ rpmoci builds OCI container images from RPM packages, using [DNF](https://github
 rpmoci features:
 
  - **deterministic** rpmoci locks RPM dependencies using the package file/lockfile paradigm of bundler/cargo etc and can produce reproducible images with identical digests.
- - **no container runtime required** rpmoci can build images in environments without docker access.
- - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary packages.
+ - **unprivileged** rpmoci can build images in environments without access to a container runtime, and without root access (this relies on the user being able to create [user namespaces](https://www.man7.org/linux/man-pages/man7/user_namespaces.7.html))
+ - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary dependencies.
 
 The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/apko) and [distroless](https://github.com/GoogleContainerTools/distroless) tooling.
 
@@ -27,6 +27,14 @@ Per the above, you'll need dnf, Rust, python3-devel and openssl-devel installed.
 ```bash
 cargo build
 ```
+
+### Rootless setup
+When rpmoci runs as a non-root user it will automatically attempt to setup a user namespace in which to run.
+rpmoci maps the user's uid/gid to root in the user namespace.
+
+It also attempts to map the current user's subuid/subgid range into the user namespace, which is required for rpmoci to be able to create containers from RPMs that contain files owned by a non-root user.
+
+rpmoci requires that at least 999 subuids/subgids are allocated to your user. You can create them per [https://rootlesscontaine.rs/getting-started/common/subuid/](https://rootlesscontaine.rs/getting-started/common/subuid/).
 
 ## Getting started
 You need to create an rpmoci.toml file. An example is:
