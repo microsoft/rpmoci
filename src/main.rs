@@ -12,7 +12,10 @@
 //!
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
-use std::{os::unix::process::CommandExt, process::Command};
+use std::{
+    os::{fd::AsRawFd, unix::process::CommandExt},
+    process::Command,
+};
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -28,7 +31,10 @@ use nix::{
     },
     unistd::{close, getgid, getuid, pipe, read},
 };
-use pyo3::{types::PyModule, Python};
+use pyo3::{
+    types::{PyAnyMethods, PyModule},
+    Python,
+};
 use rpmoci::{subid::setup_id_maps, write};
 
 fn main() {
@@ -62,10 +68,10 @@ unsafe fn run_in_userns() -> anyhow::Result<()> {
     let child = nix::sched::clone(
         Box::new(|| {
             // this child process just waits for the parent to notify it before re-execing
-            close(writer).unwrap();
+            close(writer.as_raw_fd()).unwrap();
 
             read(
-                reader,
+                reader.as_raw_fd(),
                 // Pass a non-zero length buffer to read() to ensure the child blocks
                 &mut [0u8; 1],
             )
@@ -84,7 +90,7 @@ unsafe fn run_in_userns() -> anyhow::Result<()> {
 
     // this parent process sets up user namespace mappings, notifies the child to continue,
     // then waits for the child to exit
-    close(reader)?;
+    close(reader.as_raw_fd())?;
     // Kill the child process if we fail to setup the uid/gid mappings
     if let Err(e) =
         setup_id_maps(child, user_id, group_id).context("Failed to setup uid/gid mappings")
@@ -93,7 +99,7 @@ unsafe fn run_in_userns() -> anyhow::Result<()> {
         waitpid(child, None)?;
         return Err(e);
     }
-    close(writer)?;
+    close(writer.as_raw_fd())?;
     let status = waitpid(child, None)?;
     if let nix::sys::wait::WaitStatus::Exited(_, code) = status {
         // Exit immediately with the child's exit code, as the child should have
@@ -106,7 +112,7 @@ unsafe fn run_in_userns() -> anyhow::Result<()> {
 
 fn get_cache_dir() -> Result<String> {
     Python::with_gil(|py| {
-        let misc = PyModule::import(py, "dnf.yum.misc")?;
+        let misc = PyModule::import_bound(py, "dnf.yum.misc")?;
         misc.call_method0("getCacheDir")?;
         Ok(misc.getattr("getCacheDir")?.call0()?.extract()?)
     })
