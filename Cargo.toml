@@ -13,7 +13,7 @@ repository = "https://github.com/microsoft/rpmoci"
 [dependencies]
 anyhow = "1.0.75"
 chrono = { version = "0.4.26", features = ["clock"], default-features = false }
-clap = { version = "4.3.23", features = ["derive"] }
+clap = { version = "4.5.6", features = ["derive"] }
 clap-verbosity-flag = "2.0.0"
 dirs = "5.0.1"
 env_logger = "0.11.3"
