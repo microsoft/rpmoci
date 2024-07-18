@@ -1,7 +1,18 @@
 ### Breaking Changes
+### Added
+### Fixed
+
+## 0.3.0 - 2024-07-18
+### Breaking Changes
 - Add runtime dependency on sqlite and build-time dependency on sqlite-devel
 
 ### Added
+- rpmoci respects the SOURCE_DATE_EPOCH environment variable in order to create reproducible images with identical digests.
+- Add rootless support for building images.
+  - When run as a non-root user, rpmoci will attempt to run within a user namespace to generate the container image.
+- rpmoci automatically adds the OS release package (containing `/etc/os-release`) so created images are easier for other tools to scan.
+  - This can be disabled via the `contents.os_release` field
+
 ### Fixed
 
 ## 0.2.12 - 2023-11-28
