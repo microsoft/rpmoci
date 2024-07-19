@@ -19,13 +19,14 @@ use flate2::{write::GzEncoder, Compression};
 use oci_spec::image::{Descriptor, DescriptorBuilder, MediaType, OciLayout, OciLayoutBuilder};
 use serde::Serialize;
 use std::{
+    collections::{hash_map::Entry, HashMap},
     fs,
     io::Write,
     os::unix::{
         fs::MetadataExt,
         prelude::{FileTypeExt, OsStrExt},
     },
-    path::Path,
+    path::{Path, PathBuf},
 };
 use tempfile::NamedTempFile;
 use walkdir::WalkDir;
@@ -129,15 +130,19 @@ fn init_dir(layout: impl AsRef<Path>) -> Result<(), anyhow::Error> {
 // https://mgorny.pl/articles/portability-of-tar-features.html#id25
 const PAX_SCHILY_XATTR: &[u8; 13] = b"SCHILY.xattr.";
 
-/// manual implementation of append_dir_all that:
+/// custom implementation of tar-rs's append_dir_all that:
 /// - works around https://github.com/alexcrichton/tar-rs/issues/102 so that security capabilities are preserved
-/// - emulates tar's `--clamp-mtime` option for so that any file/dir/symlink mtimes are no later than a specific value
-fn append_dir_all_with_xattrs(
-    tar: &mut tar::Builder<impl Write>,
+/// - emulates tar's `--clamp-mtime` option so that any file/dir/symlink mtimes are no later than a specific value
+/// - supports hardlinks
+pub(super) fn append_dir_all_with_xattrs(
+    builder: &mut tar::Builder<impl Write>,
     src_path: impl AsRef<Path>,
     clamp_mtime: i64,
 ) -> Result<()> {
     let src_path = src_path.as_ref();
+    // Map (dev, inode) -> path for hardlinks
+    let mut hardlinks: HashMap<(u64, u64), PathBuf> = HashMap::new();
+
     for entry in WalkDir::new(src_path)
         .follow_links(false)
         .into_iter()
@@ -163,10 +168,34 @@ fn append_dir_all_with_xattrs(
                 let mtime = filetime::FileTime::from_unix_time(clamp_mtime, 0);
                 filetime::set_symlink_file_times(entry.path(), mtime, mtime)?;
             }
-            add_pax_extension_header(entry.path(), tar)?;
-            tar.append_path_with_name(entry.path(), rel_path)?;
+            add_pax_extension_header(entry.path(), builder)?;
+            builder.append_path_with_name(entry.path(), rel_path)?;
         } else if entry.file_type().is_file() || entry.file_type().is_dir() {
-            add_pax_extension_header(entry.path(), tar)?;
+            add_pax_extension_header(entry.path(), builder)?;
+
+            // If this is a hardlink, add a link header instead of the file
+            // if this isn't the first time we've seen this inode
+            if meta.nlink() > 1 {
+                match hardlinks.entry((meta.dev(), meta.ino())) {
+                    Entry::Occupied(e) => {
+                        // Add link header and continue to next entry
+                        let mut header = tar::Header::new_gnu();
+                        header.set_metadata(&meta);
+                        if meta.mtime() > clamp_mtime {
+                            header.set_mtime(clamp_mtime as u64);
+                        }
+                        header.set_entry_type(tar::EntryType::Link);
+                        header.set_cksum();
+                        builder.append_link(&mut header, &rel_path, e.get())?;
+                        continue;
+                    }
+                    Entry::Vacant(e) => {
+                        // This is the first time we've seen this inode
+                        e.insert(rel_path.clone());
+                    }
+                }
+            }
+
             let mut header = tar::Header::new_gnu();
             header.set_size(meta.len());
             header.set_metadata(&meta);
@@ -174,13 +203,13 @@ fn append_dir_all_with_xattrs(
                 header.set_mtime(clamp_mtime as u64);
             }
             if entry.file_type().is_file() {
-                tar.append_data(
+                builder.append_data(
                     &mut header,
                     rel_path,
                     &mut std::fs::File::open(entry.path())?,
                 )?;
             } else {
-                tar.append_data(&mut header, rel_path, &mut std::io::empty())?;
+                builder.append_data(&mut header, rel_path, &mut std::io::empty())?;
             };
         }
     }
@@ -191,7 +220,7 @@ fn append_dir_all_with_xattrs(
 // Convert any extended attributes on the specified path to a tar PAX extension header, and add it to the tar archive
 fn add_pax_extension_header(
     path: impl AsRef<Path>,
-    tar: &mut tar::Builder<impl Write>,
+    builder: &mut tar::Builder<impl Write>,
 ) -> Result<(), anyhow::Error> {
     let path = path.as_ref();
     let xattrs = xattr::list(path)
@@ -227,7 +256,7 @@ fn add_pax_extension_header(
         pax_header.set_size(pax_data.len() as u64);
         pax_header.set_entry_type(tar::EntryType::XHeader);
         pax_header.set_cksum();
-        tar.append(&pax_header, &*pax_data)?;
+        builder.append(&pax_header, &*pax_data)?;
     }
     Ok(())
 }
