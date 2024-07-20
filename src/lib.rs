@@ -22,11 +22,10 @@ use std::{
 };
 
 use anyhow::{bail, Context};
+mod archive;
 pub mod cli;
 pub mod config;
 pub mod lockfile;
-mod oci;
-mod sha256_writer;
 pub mod subid;
 pub mod write;
 use anyhow::Result;

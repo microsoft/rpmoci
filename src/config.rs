@@ -15,7 +15,7 @@
 //! You should have received a copy of the GNU General Public License
 //! along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use anyhow::Result;
-use oci_spec::{
+use ocidir::oci_spec::{
     image::{Arch, ConfigBuilder, ImageConfiguration, ImageConfigurationBuilder, Os},
     OciSpecError,
 };
@@ -204,11 +204,10 @@ impl ImageConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use crate::config::ImageConfig;
-
     use super::Config;
+    use crate::config::ImageConfig;
+    use ocidir::oci_spec::image::ImageConfiguration;
+    use std::collections::HashMap;
 
     #[test]
     fn parse_basic() {
@@ -287,11 +286,10 @@ mod tests {
         let config_with_path = r#"
         envs = { PATH = "/usr/bin"}
         "#;
-        let config: oci_spec::image::ImageConfiguration =
-            toml::from_str::<ImageConfig>(config_with_path)
-                .unwrap()
-                .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
-                .unwrap();
+        let config: ImageConfiguration = toml::from_str::<ImageConfig>(config_with_path)
+            .unwrap()
+            .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
+            .unwrap();
         let envs = config.config().as_ref().unwrap().env().as_ref().unwrap();
         assert!(envs.iter().any(|e| e == "PATH=/usr/bin"));
         assert_eq!(envs.len(), 1);
@@ -299,11 +297,10 @@ mod tests {
         let config_without_path = r#"
         envs = { FOO = "bar"}
         "#;
-        let config: oci_spec::image::ImageConfiguration =
-            toml::from_str::<ImageConfig>(config_without_path)
-                .unwrap()
-                .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
-                .unwrap();
+        let config: ImageConfiguration = toml::from_str::<ImageConfig>(config_without_path)
+            .unwrap()
+            .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
+            .unwrap();
         let envs = config.config().as_ref().unwrap().env().as_ref().unwrap();
         assert!(envs
             .iter()
@@ -317,7 +314,7 @@ mod tests {
         labels = { "foo.bar" = "baz"}
         "#;
         // No additional labels
-        let config: oci_spec::image::ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
+        let config: ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
             .unwrap()
             .to_oci_image_configuration(HashMap::new(), chrono::Utc::now())
             .unwrap();
@@ -331,7 +328,7 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        let config: oci_spec::image::ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
+        let config: ImageConfiguration = toml::from_str::<ImageConfig>(config_str)
             .unwrap()
             .to_oci_image_configuration(extra_labels, chrono::Utc::now())
             .unwrap();
