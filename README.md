@@ -8,7 +8,11 @@ rpmoci features:
  - **unprivileged** rpmoci can build images in environments without access to a container runtime, and without root access (this relies on the user being able to create [user namespaces](https://www.man7.org/linux/man-pages/man7/user_namespaces.7.html))
  - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary dependencies.
 
+rpmoci is a good fit for containerizing applications - you package your application as an RPM, and then use rpmoci to build a minimal container image from that RPM.
+
 The design of rpmoci is influenced by [apko](https://github.com/chainguard-dev/apko) and [distroless](https://github.com/GoogleContainerTools/distroless) tooling.
+rpmoci is also similar to a smaller [`rpm-ostree compose image`](https://coreos.github.io/rpm-ostree/container/#creating-base-images), with a focus on building microservices.
+
 
 ## Installing
 
