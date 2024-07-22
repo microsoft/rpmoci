@@ -286,3 +286,11 @@ to run it, or build an RPM using [cargo-generate-rpm](https://github.com/cat-in-
 ```bash
 cargo generate-rpm
 ```
+
+### Testing
+
+The tests are run via `cargo test`. The integration tests in `tests/it.rs` run `rpmoci build`,
+so must be run either as root, or with user namespace support setup.
+
+The tests use [test-temp-dir](https://docs.rs/crate/test-temp-dir/latest), so you can set 
+the `TEST_TEMP_RETAIN` environment variable to `1` so that the test directories are kept around for debugging in `<CARGO_TARGET_DIR>/tests`.

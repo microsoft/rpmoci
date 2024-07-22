@@ -42,6 +42,9 @@ url = { version = "2.2.2", features = ["serde"] }
 walkdir = "2.3.2"
 xattr = "1.0.1"
 
+[dev-dependencies]
+test-temp-dir = "0.2.2"
+
 [package.metadata.generate-rpm]
 assets = [
     { source = "target/release/rpmoci", dest = "/usr/bin/rpmoci", mode = "0755" },
@@ -52,6 +55,8 @@ require-sh = false
 [package.metadata.generate-rpm.requires]
 dnf = "*"
 
+
 [features]
+default = ["test-docker"]
 # The "test-docker" feature is used to run integration tests requiring skopeo and docker
 test-docker = []

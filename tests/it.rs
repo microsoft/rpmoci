@@ -2,37 +2,46 @@
 
 use std::{
     fs::{self},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
 use rpmoci::lockfile::Lockfile;
 
 use oci_spec::image::ImageIndex;
+use test_temp_dir::TestTempDir;
 
 // Path to rpmoci binary under test
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
 
-fn setup_test(fixture: &str) -> PathBuf {
+fn setup_test(fixture: &str) -> (TestTempDir, PathBuf) {
+    // the test_temp_dir macro can't handle the integration test module path not containing ::,
+    // so construct our own item path
+    let out = test_temp_dir::TestTempDir::from_complete_item_path(&format!(
+        "it::{}",
+        std::thread::current().name().unwrap()
+    ));
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/")
         .join(fixture);
-    let out = root.join("out");
-    let _ = fs::remove_dir_all(&out);
-    fs::create_dir_all(&out).unwrap();
-    fs::copy(root.join("rpmoci.toml"), out.join("rpmoci.toml")).unwrap();
+    fs::copy(
+        root.join("rpmoci.toml"),
+        out.as_path_untracked().join("rpmoci.toml"),
+    )
+    .unwrap();
 
     let lock = root.join("rpmoci.lock");
     if lock.exists() {
-        fs::copy(lock, out.join("rpmoci.lock")).unwrap();
+        fs::copy(lock, out.as_path_untracked().join("rpmoci.lock")).unwrap();
     }
-    out
+    let path = out.as_path_untracked().to_path_buf();
+    (out, path)
 }
 
 #[test]
 fn test_incompatible_lockfile() {
     // Building with locked should fail
-    let root = setup_test("incompatible_lockfile");
+    let (_tmp_dir, root) = setup_test("incompatible_lockfile");
     let output = Command::new(EXE)
         .arg("build")
         .arg("--locked")
@@ -56,7 +65,7 @@ fn test_incompatible_lockfile() {
 
 #[test]
 fn test_updatable_lockfile() {
-    let root = setup_test("updatable_lockfile");
+    let (_tmp_dir, root) = setup_test("updatable_lockfile");
     let output = Command::new(EXE)
         .arg("update")
         .current_dir(root)
@@ -74,7 +83,7 @@ fn test_updatable_lockfile() {
 
 #[test]
 fn test_unparseable_lockfile() {
-    let root = setup_test("unparseable_lockfile");
+    let (_tmp_dir, root) = setup_test("unparseable_lockfile");
     // building with --locked should fail
     let output = Command::new(EXE)
         .arg("build")
@@ -103,7 +112,7 @@ fn test_unparseable_lockfile() {
 
 #[test]
 fn test_no_lockfile() {
-    let root = setup_test("no_lockfile");
+    let (_tmp_dir, root) = setup_test("no_lockfile");
     // building with --locked should fail
     let output = Command::new(EXE)
         .arg("build")
@@ -122,7 +131,7 @@ fn test_no_lockfile() {
 
 #[test]
 fn test_update_from_lockfile() {
-    let root = setup_test("update_from_lockfile");
+    let (_tmp_dir, root) = setup_test("update_from_lockfile");
     let output = Command::new(EXE)
         .arg("update")
         .arg("--from-lockfile")
@@ -142,25 +151,22 @@ fn test_update_from_lockfile() {
 #[test]
 fn test_simple_build() {
     // Repeat the same build twice using same SOURCE_DATE_EPOCH and ensure the resulting images are identical
-    let root = setup_test("simple_build");
+    let (_tmp_dir, root) = setup_test("simple_build");
     let source_date_epoch = "1701168547";
-    let output1 = Command::new("sudo")
-        .env("SOURCE_DATE_EPOCH", source_date_epoch)
-        .arg("--preserve-env=SOURCE_DATE_EPOCH")
-        .arg(EXE)
+    let output1 = Command::new(EXE)
         .arg("build")
         .arg("--image=foo")
         .arg("--tag=bar")
         .current_dir(&root)
         .env("NO_COLOR", "YES") // So the stderr checks below work
+        .env("SOURCE_DATE_EPOCH", source_date_epoch)
         .output()
         .unwrap();
     let stderr = std::str::from_utf8(&output1.stderr).unwrap();
     eprintln!("stderr: {}", stderr);
     assert!(output1.status.success());
 
-    let oras_status = Command::new("sudo")
-        .arg("oras")
+    let oras_status = Command::new("oras")
         .arg("copy")
         .arg("--from-oci-layout")
         .arg("--to-oci-layout")
@@ -185,47 +191,26 @@ fn test_simple_build() {
 
     // Repeat the build, to ensure reproducing the same image works
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let output2 = Command::new("sudo")
-        .env("SOURCE_DATE_EPOCH", source_date_epoch)
-        .arg("--preserve-env=SOURCE_DATE_EPOCH")
-        .arg(EXE)
+    let output2 = Command::new(EXE)
         .arg("build")
         .arg("--image=foo")
         .arg("--tag=bar2")
         .current_dir(&root)
         .env("NO_COLOR", "YES")
+        .env("SOURCE_DATE_EPOCH", source_date_epoch)
         .output()
         .unwrap();
     let stderr = std::str::from_utf8(&output2.stderr).unwrap();
     eprintln!("stderr: {}", stderr);
     assert!(output2.status.success());
 
-    // To inspect the digests we need to change ownership
-    let uid = nix::unistd::Uid::current();
-    let gid = nix::unistd::Gid::current();
-    let _ = Command::new("sudo")
-        .arg("chown")
-        .arg("-R")
-        .arg(format!("{}:{}", uid, gid))
-        .arg(&root)
-        .status()
-        .unwrap();
-
     let index = ImageIndex::from_file(root.join("foo").join("index.json")).unwrap();
     assert_eq!(index.manifests()[0].digest(), index.manifests()[1].digest());
-
-    // Cleanup using sudo
-    let _ = Command::new("sudo")
-        .arg("rm")
-        .arg("-rf")
-        .arg(&root)
-        .status()
-        .unwrap();
 }
 
 #[test]
 fn test_simple_vendor() {
-    let root = setup_test("simple_vendor");
+    let (_tmp_dir, root) = setup_test("simple_vendor");
     let output = Command::new(EXE)
         .arg("update")
         .current_dir(&root)
@@ -248,48 +233,10 @@ fn test_simple_vendor() {
     assert!(output.status.success());
 }
 
-#[cfg(feature = "test-docker")]
-#[test]
-fn test_capabilities() {
-    let root = setup_test("capabilities");
-    let status = Command::new("sudo")
-        .arg(EXE)
-        .arg("build")
-        .arg("--image=capabilities")
-        .arg("--tag=test")
-        .current_dir(&root)
-        .status()
-        .unwrap();
-    assert!(status.success());
-
-    let status = Command::new("sudo")
-        .arg("skopeo")
-        .arg("copy")
-        .arg("oci:capabilities:test")
-        .arg("docker-daemon:capabilities:test")
-        .current_dir(&root)
-        .status()
-        .unwrap();
-    assert!(status.success());
-
-    let output = Command::new("docker")
-        .arg("run")
-        .arg("capabilities:test")
-        .current_dir(&root)
-        .output()
-        .unwrap();
-    let stderr = std::str::from_utf8(&output.stderr).unwrap();
-    eprintln!("stderr: {}", stderr);
-    assert!(std::str::from_utf8(&output.stdout)
-        .unwrap()
-        .contains("cap_net_admin=ep"));
-    assert!(status.success());
-}
-
 #[test]
 fn test_no_auto_etc_os_release() {
     // Test that `contents.os_release = false` works
-    let root = setup_test("no_auto_etc_os_release");
+    let (_tmp_dir, root) = setup_test("no_auto_etc_os_release");
     let output = Command::new(EXE)
         .arg("update")
         .current_dir(&root)
@@ -310,7 +257,7 @@ fn test_no_auto_etc_os_release() {
 #[test]
 fn test_explicit_etc_os_release() {
     // Test that resolution works when /etc/os-release explicitly added
-    let root = setup_test("etc_os_release_explicit");
+    let (_tmp_dir, root) = setup_test("etc_os_release_explicit");
     let output = Command::new(EXE)
         .arg("update")
         .current_dir(&root)
@@ -323,7 +270,7 @@ fn test_explicit_etc_os_release() {
 #[test]
 fn test_weak_deps() {
     // Verify a build without weak dependencies succeeds
-    let root = setup_test("weakdeps");
+    let (_tmp_dir, root) = setup_test("weakdeps");
     let output = Command::new(EXE)
         .arg("build")
         .arg("--image=weak")
@@ -332,4 +279,58 @@ fn test_weak_deps() {
         .output()
         .unwrap();
     assert!(output.status.success());
+}
+
+#[cfg(feature = "test-docker")]
+#[test]
+fn test_capabilities() {
+    let output = build_and_run("capabilities");
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert!(std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .contains("cap_net_admin=ep"));
+    assert!(output.status.success());
+}
+
+#[cfg(feature = "test-docker")]
+#[test]
+fn test_hardlinks() {
+    // This test checks that /usr/bin/ld has a hardlink, i.e that rpmoci hasn't copied the file
+    let output = build_and_run("hardlinks");
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    eprintln!("stderr: {}", stderr);
+    assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "2");
+}
+
+fn build_and_run(image: &str) -> std::process::Output {
+    let (_tmp_dir, root) = setup_test(image);
+    let status = Command::new(EXE)
+        .arg("build")
+        .arg("--image")
+        .arg(image)
+        .arg("--tag=test")
+        .current_dir(&root)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    copy_to_docker(image, &root);
+    let output = Command::new("docker")
+        .arg("run")
+        .arg(format!("{}:test", image))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    output
+}
+
+fn copy_to_docker(image: &str, root: impl AsRef<Path>) {
+    let status = Command::new("skopeo")
+        .arg("copy")
+        .arg(format!("oci:{}:test", image))
+        .arg(format!("docker-daemon:{}:test", image))
+        .current_dir(root.as_ref())
+        .status()
+        .unwrap();
+    assert!(status.success());
 }
