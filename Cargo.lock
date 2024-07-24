@@ -1042,7 +1042,8 @@ dependencies = [
 [[package]]
 name = "ocidir"
 version = "0.2.0"
-source = "git+https://github.com/containers/ocidir-rs#41fe9ed41a54e8f0f3ba33de8f553ce29b679af4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94cfdfa95233973957a7ab61fba84b2c37323665c2034381f25d709d057eae64"
 dependencies = [
  "anyhow",
  "camino",
