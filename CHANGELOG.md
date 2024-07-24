@@ -1,6 +1,9 @@
 ### Breaking Changes
 ### Added
 ### Fixed
+
+## 0.3.1 - 2024-07-24
+### Fixed
 - Preserve hardlinks rather than copying files when building images.
 
 ## 0.3.0 - 2024-07-18
