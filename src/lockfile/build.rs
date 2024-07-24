@@ -15,18 +15,22 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, process::Command};
 
 use anyhow::{bail, Context, Result};
 use chrono::DateTime;
+use flate2::Compression;
 use glob::glob;
-use oci_spec::image::{ImageIndex, ImageManifestBuilder, MediaType, RootFsBuilder};
+use ocidir::oci_spec::image::{MediaType, RootFsBuilder};
+use ocidir::{new_empty_manifest, OciDir};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
 use super::Lockfile;
+use crate::archive::append_dir_all_with_xattrs;
+use crate::config::Config;
 use crate::write;
-use crate::{config::Config, oci};
+use ocidir::cap_std::fs::Dir;
 
 impl Lockfile {
     /// Build a container image from a lockfile
@@ -38,42 +42,87 @@ impl Lockfile {
         vendor_dir: Option<&Path>,
         labels: HashMap<String, String>,
     ) -> Result<()> {
-        // Set up the OCI image, and unpack it so we can edit the rootfs
-        oci::init_image_directory(image)?;
+        // Ensure OCI directory exists
+        fs::create_dir_all(image)
+            .context(format!("Failed to create OCI image directory `{}`", &image))?;
+        let dir = Dir::open_ambient_dir(image, ocidir::cap_std::ambient_authority())
+            .context("Failed to open image directory")?;
+        let oci = OciDir::ensure(&dir)?;
 
-        let tmp_rpm_dir: TempDir; // This needs to stay in scope til end of fn, if set
-        let rpm_dir = if let Some(vendor_dir) = vendor_dir {
-            PathBuf::from(vendor_dir)
+        let creation_time = creation_time()?;
+        let installroot = TempDir::new()?; // This needs to outlive the layer builder below.
+        if let Some(vendor_dir) = vendor_dir {
+            // Use vendored RPMs rather than downloading
+            self.create_installroot(installroot.path(), vendor_dir, false, cfg, &creation_time)
         } else {
-            // If no vendor dir is provided then attempt to download the packages
-            tmp_rpm_dir = TempDir::new()?;
-            self.download_rpms(cfg, tmp_rpm_dir.path())?;
-            PathBuf::from(tmp_rpm_dir.path())
-        };
+            // No vendoring - download RPMs
+            let tmp_rpm_dir = TempDir::new()?;
+            self.create_installroot(
+                installroot.path(),
+                tmp_rpm_dir.path(),
+                true,
+                cfg,
+                &creation_time,
+            )
+        }
+        .context("Failed to create installroot")?;
 
-        // Verify signatures of packages
-        self.check_gpg_keys(&rpm_dir)?;
+        // Create the root filesystem layer
+        write::ok("Creating", "root filesystem layer")?;
+        let mut builder = oci.create_layer(Compression::fast().into())?;
+        builder.follow_symlinks(false);
+        append_dir_all_with_xattrs(&mut builder, installroot.path(), creation_time.timestamp())
+            .context("failed to archive root filesystem")?;
+        let layer = builder.into_inner()?.complete()?;
+        let descriptor = layer
+            .descriptor()
+            .media_type(MediaType::ImageLayerGzip)
+            .build()?;
 
-        // Install the RPMs into a new directory that will become the container rootfs
-        let tmp_dir = TempDir::new()?;
-        let installroot = PathBuf::from(tmp_dir.path());
+        // Create the image configuration blob
+        write::ok("Writing", "image configuration blob")?;
+        let mut image_config = cfg
+            .image
+            .to_oci_image_configuration(labels, creation_time)?;
+        let rootfs = RootFsBuilder::default()
+            .diff_ids(vec![format!("sha256:{}", layer.uncompressed_sha256)])
+            .build()?;
+        image_config.set_rootfs(rootfs);
+
+        // Create the image manifest
+        let manifest = new_empty_manifest()
+            .media_type(MediaType::ImageManifest)
+            .layers(vec![descriptor])
+            .build()?;
+
+        write::ok("Writing", "image manifest and config")?;
+        oci.insert_manifest_and_config(
+            manifest,
+            image_config,
+            Some(tag),
+            ocidir::oci_spec::image::Platform::default(),
+        )?;
+        Ok(())
+    }
+
+    fn create_installroot(
+        &self,
+        installroot: &Path,
+        rpm_dir: &Path,
+        download_rpms: bool,
+        cfg: &Config,
+        creation_time: &DateTime<chrono::Utc>,
+    ) -> Result<(), anyhow::Error> {
+        if download_rpms {
+            self.download_rpms(cfg, rpm_dir)?;
+        }
+        self.check_gpg_keys(rpm_dir)?;
         let mut dnf_install = Command::new("dnf");
-
-        let creation_time = if let Ok(sde) = std::env::var("SOURCE_DATE_EPOCH") {
-            let timestamp = sde
-                .parse::<i64>()
-                .with_context(|| format!("Failed to parse SOURCE_DATE_EPOCH `{}`", sde))?;
-            DateTime::from_timestamp(timestamp, 0)
-                .ok_or_else(|| anyhow::anyhow!("SOURCE_DATE_EPOCH out of range: `{}`", sde))?
-        } else {
-            chrono::Utc::now()
-        };
-
         dnf_install
             .env("SOURCE_DATE_EPOCH", creation_time.timestamp().to_string())
             .arg("--disablerepo=*")
             .arg("--installroot")
-            .arg(&installroot)
+            .arg(installroot)
             .arg("install")
             .arg("--assumeyes")
             .arg(format!(
@@ -91,8 +140,6 @@ impl Lockfile {
                 }
                 rpm_paths
             });
-
-        // Add any local packages.
         for glob_spec in cfg
             .contents
             .packages
@@ -115,103 +162,31 @@ impl Lockfile {
             bail!("failed to dnf install");
         }
         write::ok("Installed", "packages successfully")?;
-
-        // Remove unnecessary installation artifacts from the rootfs if present
         let _ = fs::remove_dir_all(installroot.join("var/log"));
         let _ = fs::remove_dir_all(installroot.join("var/cache"));
         let _ = fs::remove_dir_all(installroot.join("var/tmp"));
         let _ = fs::remove_dir_all(installroot.join("var/lib/dnf/"));
         let _ = fs::remove_file(installroot.join("var/lib/rpm/.rpm.lock"));
-        // rpm configures sqlite to persist the WAL and SHM files: https://github.com/rpm-software-management/rpm/blob/1cd9f9077a2829c363a198e5af56c8a56c6bc346/lib/backend/sqlite.c#L174C35-L174C59
-        // this is a source of non-determinism, so we disable it here (should rpm need to be run against this db, it will re-create the journaling files)
-        // This obviously only helps if RPM uses sqlite for the database and stores it in /var/lib/rpm
         let sqlite_shm = installroot.join("var/lib/rpm/rpmdb.sqlite-shm");
         if sqlite_shm.exists() {
             disable_sqlite_journaling(&installroot.join("var/lib/rpm/rpmdb.sqlite"))
                 .context("Failed to disable sqlite journaling of RPM db")?;
         }
-
-        // Create the root filesystem layer
-        write::ok("Creating", "root filesystem layer")?;
-        let (layer, diff_id) = match oci::create_image_layer(&installroot, image, creation_time) {
-            Ok((layer, diff_id)) => (layer, diff_id),
-            Err(e) => {
-                let p = tmp_dir.into_path();
-                write::error(
-                    "Failed",
-                    format!(
-                        "to create root filesystem layer. Keeping temporary directory for debugging: {}",
-                        p.display()
-                    ),
-                )?;
-                return Err(e);
-            }
-        };
-
-        // Create the image configuration blob
-        write::ok("Writing", "image configuration blob")?;
-        let mut image_config = cfg
-            .image
-            .to_oci_image_configuration(labels, creation_time)?;
-        let rootfs = RootFsBuilder::default().diff_ids(vec![diff_id]).build()?;
-        image_config.set_rootfs(rootfs);
-        let config = oci::write_json_blob(&image_config, MediaType::ImageConfig, image)?;
-
-        // Create the image manifest
-        write::ok("Writing", "image manifest")?;
-        let manifest = ImageManifestBuilder::default()
-            .schema_version(2u32)
-            .media_type(MediaType::ImageManifest)
-            .layers(vec![layer])
-            .config(config)
-            .build()?;
-        let mut manifest_descriptor =
-            oci::write_json_blob(&manifest, MediaType::ImageManifest, image)?;
-        let mut annotations = HashMap::new();
-        annotations.insert(
-            "org.opencontainers.image.ref.name".to_string(),
-            tag.to_string(),
-        );
-        manifest_descriptor.set_annotations(Some(annotations));
-
-        // Add the manifest descriptor to the OCI image index
-        write::ok("Adding", "manifest to OCI image index")?;
-        let index_path = Path::new(image).join("index.json");
-        let mut index: ImageIndex = serde_json::from_str(
-            &fs::read_to_string(&index_path)
-                .context(format!("Failed to read `{}`", index_path.display()))?,
-        )?;
-
-        // Remove any image with the same name
-        let mut manifests = index
-            .manifests()
-            .iter()
-            .filter(|manifest| {
-                let name = manifest
-                    .annotations()
-                    .as_ref()
-                    .and_then(|map| map.get("org.opencontainers.image.ref.name"));
-                if let Some(name) = name {
-                    name != tag
-                } else {
-                    true
-                }
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        manifests.push(manifest_descriptor);
-        index.set_manifests(manifests);
-
-        let index_file = std::fs::File::create(&index_path).context(format!(
-            "Failed to create index.json file `{}`",
-            index_path.display()
-        ))?;
-        serde_json::to_writer(index_file, &index).context(format!(
-            "Failed to write to index.json file `{}`",
-            index_path.display()
-        ))?;
         Ok(())
     }
+}
+
+fn creation_time() -> Result<DateTime<chrono::Utc>, anyhow::Error> {
+    let creation_time = if let Ok(sde) = std::env::var("SOURCE_DATE_EPOCH") {
+        let timestamp = sde
+            .parse::<i64>()
+            .with_context(|| format!("Failed to parse SOURCE_DATE_EPOCH `{}`", sde))?;
+        DateTime::from_timestamp(timestamp, 0)
+            .ok_or_else(|| anyhow::anyhow!("SOURCE_DATE_EPOCH out of range: `{}`", sde))?
+    } else {
+        chrono::Utc::now()
+    };
+    Ok(creation_time)
 }
 
 fn disable_sqlite_journaling(path: &Path) -> Result<()> {
