@@ -38,7 +38,7 @@ toml = { version = "0.8.8" }
 url = { version = "2.2.2", features = ["serde"] }
 walkdir = "2.3.2"
 xattr = "1.0.1"
-ocidir = { git = "https://github.com/containers/ocidir-rs" }
+ocidir = "0.2.1"
 
 [dev-dependencies]
 test-temp-dir = "0.2.2"

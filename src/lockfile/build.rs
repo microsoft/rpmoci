@@ -21,7 +21,7 @@ use anyhow::{bail, Context, Result};
 use chrono::DateTime;
 use flate2::Compression;
 use glob::glob;
-use ocidir::oci_spec::image::{MediaType, RootFsBuilder};
+use ocidir::oci_spec::image::MediaType;
 use ocidir::{new_empty_manifest, OciDir};
 use rusqlite::Connection;
 use tempfile::TempDir;
@@ -31,6 +31,8 @@ use crate::archive::append_dir_all_with_xattrs;
 use crate::config::Config;
 use crate::write;
 use ocidir::cap_std::fs::Dir;
+
+const CREATED_BY: &str = "Created by rpmoci";
 
 impl Lockfile {
     /// Build a container image from a lockfile
@@ -74,26 +76,24 @@ impl Lockfile {
         append_dir_all_with_xattrs(&mut builder, installroot.path(), creation_time.timestamp())
             .context("failed to archive root filesystem")?;
         let layer = builder.into_inner()?.complete()?;
-        let descriptor = layer
-            .descriptor()
-            .media_type(MediaType::ImageLayerGzip)
-            .build()?;
 
         // Create the image configuration blob
         write::ok("Writing", "image configuration blob")?;
         let mut image_config = cfg
             .image
             .to_oci_image_configuration(labels, creation_time)?;
-        let rootfs = RootFsBuilder::default()
-            .diff_ids(vec![format!("sha256:{}", layer.uncompressed_sha256)])
-            .build()?;
-        image_config.set_rootfs(rootfs);
-
         // Create the image manifest
-        let manifest = new_empty_manifest()
+        let mut manifest = new_empty_manifest()
             .media_type(MediaType::ImageManifest)
-            .layers(vec![descriptor])
             .build()?;
+        oci.push_layer_full(
+            &mut manifest,
+            &mut image_config,
+            layer,
+            Option::<HashMap<String, String>>::None,
+            CREATED_BY,
+            creation_time,
+        );
 
         write::ok("Writing", "image manifest and config")?;
         oci.insert_manifest_and_config(
