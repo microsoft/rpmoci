@@ -49,7 +49,7 @@ impl Lockfile {
             .context(format!("Failed to create OCI image directory `{}`", &image))?;
         let dir = Dir::open_ambient_dir(image, ocidir::cap_std::ambient_authority())
             .context("Failed to open image directory")?;
-        let oci = OciDir::ensure(&dir)?;
+        let oci_dir = OciDir::ensure(&dir)?;
 
         let creation_time = creation_time()?;
         let installroot = TempDir::new()?; // This needs to outlive the layer builder below.
@@ -71,7 +71,7 @@ impl Lockfile {
 
         // Create the root filesystem layer
         write::ok("Creating", "root filesystem layer")?;
-        let mut builder = oci.create_layer(Compression::fast().into())?;
+        let mut builder = oci_dir.create_layer(Compression::fast().into())?;
         builder.follow_symlinks(false);
         append_dir_all_with_xattrs(&mut builder, installroot.path(), creation_time.timestamp())
             .context("failed to archive root filesystem")?;
@@ -86,7 +86,7 @@ impl Lockfile {
         let mut manifest = new_empty_manifest()
             .media_type(MediaType::ImageManifest)
             .build()?;
-        oci.push_layer_full(
+        oci_dir.push_layer_full(
             &mut manifest,
             &mut image_config,
             layer,
@@ -96,7 +96,7 @@ impl Lockfile {
         );
 
         write::ok("Writing", "image manifest and config")?;
-        oci.insert_manifest_and_config(
+        oci_dir.insert_manifest_and_config(
             manifest,
             image_config,
             Some(tag),
@@ -162,12 +162,17 @@ impl Lockfile {
             bail!("failed to dnf install");
         }
         write::ok("Installed", "packages successfully")?;
+
+        // Remove unnecessary installation artifacts from the rootfs if present
         let _ = fs::remove_dir_all(installroot.join("var/log"));
         let _ = fs::remove_dir_all(installroot.join("var/cache"));
         let _ = fs::remove_dir_all(installroot.join("var/tmp"));
         let _ = fs::remove_dir_all(installroot.join("var/lib/dnf/"));
         let _ = fs::remove_file(installroot.join("var/lib/rpm/.rpm.lock"));
         let sqlite_shm = installroot.join("var/lib/rpm/rpmdb.sqlite-shm");
+        // rpm configures sqlite to persist the WAL and SHM files: https://github.com/rpm-software-management/rpm/blob/1cd9f9077a2829c363a198e5af56c8a56c6bc346/lib/backend/sqlite.c#L174C35-L174C59
+        // this is a source of non-determinism, so we disable it here (should rpm need to be run against this db, it will re-create the journaling files)
+        // This obviously only helps if RPM uses sqlite for the database and stores it in /var/lib/rpm
         if sqlite_shm.exists() {
             disable_sqlite_journaling(&installroot.join("var/lib/rpm/rpmdb.sqlite"))
                 .context("Failed to disable sqlite journaling of RPM db")?;
