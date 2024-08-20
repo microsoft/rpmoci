@@ -42,9 +42,10 @@ pub(super) fn append_dir_all_with_xattrs(
 
     for entry in WalkDir::new(src_path)
         .follow_links(false)
+        .sort_by_file_name()
         .into_iter()
-        .filter_map(Result::ok)
     {
+        let entry = entry?;
         let meta = entry.metadata()?;
         // skip sockets as tar-rs errors when trying to archive them.
         // For comparison, umoci also errors, whereas docker skips them
@@ -122,7 +123,7 @@ fn add_pax_extension_header(
     let path = path.as_ref();
     let xattrs = xattr::list(path)
         .with_context(|| format!("Failed to list xattrs from `{}`", path.display()))?;
-    let mut pax_header = tar::Header::new_ustar();
+    let mut pax_header = tar::Header::new_gnu();
     let mut pax_data = Vec::new();
     for key in xattrs {
         let value = xattr::get(path, &key)
