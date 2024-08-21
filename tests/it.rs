@@ -8,7 +8,7 @@ use std::{
 
 use rpmoci::lockfile::Lockfile;
 
-use oci_spec::image::ImageIndex;
+use ocidir::oci_spec::image::ImageIndex;
 use test_temp_dir::TestTempDir;
 
 // Path to rpmoci binary under test

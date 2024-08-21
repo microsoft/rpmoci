@@ -15,7 +15,6 @@ anyhow = "1.0.75"
 chrono = { version = "0.4.26", features = ["clock"], default-features = false }
 clap = { version = "4.5.6", features = ["derive"] }
 clap-verbosity-flag = "2.0.0"
-dirs = "5.0.1"
 env_logger = "0.11.3"
 filetime = "0.2.22"
 flate2 = { version = "1.0.24", features = ["zlib"], default-features = false }
@@ -26,8 +25,6 @@ nix = { version = "0.29.0", features = [
     "signal",
     "user",
 ], default-features = false }
-oci-spec = { version = "0.6.3", features = ["image"], default-features = false }
-openssl = "0.10.63"
 pathdiff = "0.2.1"
 pyo3 = { version = "0.22.1", features = ["auto-initialize"] }
 rpm = { version = "0.15.0", default-features = false }
@@ -41,6 +38,7 @@ toml = { version = "0.8.8" }
 url = { version = "2.2.2", features = ["serde"] }
 walkdir = "2.3.2"
 xattr = "1.0.1"
+ocidir = "0.2.1"
 
 [dev-dependencies]
 test-temp-dir = "0.2.2"
