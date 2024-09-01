@@ -26,7 +26,6 @@ mod archive;
 pub mod cli;
 pub mod config;
 pub mod lockfile;
-pub mod subid;
 pub mod write;
 use anyhow::Result;
 use cli::Command;

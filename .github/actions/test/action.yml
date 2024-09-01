@@ -1,0 +1,16 @@
+name: "rpmoci tests"
+runs:
+  using: "composite"
+  steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    - name: Setup rootless user
+      run: |
+        useradd -m -s /bin/bash rootless
+    - name: Run tests as non-root user
+      run: |
+        su - rootless
+        cargo test --features test-docker

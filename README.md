@@ -5,7 +5,7 @@ rpmoci builds OCI container images from RPM packages, using [DNF](https://github
 rpmoci features:
 
  - **deterministic** rpmoci locks RPM dependencies using the package file/lockfile paradigm of bundler/cargo etc and can produce reproducible images with identical digests.
- - **unprivileged** rpmoci can build images in environments without access to a container runtime, and without root access (this relies on the user being able to create [user namespaces](https://www.man7.org/linux/man-pages/man7/user_namespaces.7.html))
+ - **unprivileged** rpmoci can build images in environments without access to a container runtime, and can also run in a user namespace.
  - **small** rpmoci images are built solely from the RPMs you request and their dependencies, so don't contain unnecessary dependencies.
 
 rpmoci is a good fit for containerizing applications - you package your application as an RPM, and then use rpmoci to build a minimal container image from that RPM.
@@ -32,13 +32,12 @@ Per the above, you'll need dnf, Rust, python3-devel and openssl-devel installed.
 cargo build
 ```
 
-### Rootless setup
-When rpmoci runs as a non-root user it will automatically attempt to setup a user namespace in which to run.
-rpmoci maps the user's uid/gid to root in the user namespace.
+### Rootless
+rpmoci can create images as a non-root user using [user namespaces](https://man7.org/linux/man-pages/man7/user_namespaces.7.html).
 
-It also attempts to map the current user's subuid/subgid range into the user namespace, which is required for rpmoci to be able to create containers from RPMs that contain files owned by a non-root user.
-
-rpmoci requires that at least 999 subuids/subgids are allocated to your user. You can create them per [https://rootlesscontaine.rs/getting-started/common/subuid/](https://rootlesscontaine.rs/getting-started/common/subuid/).
+```bash
+$ unshare --map-auto --map-root-user --user rpmoci build --image foo --tag bar
+```
 
 ## Getting started
 You need to create an rpmoci.toml file. An example is:
