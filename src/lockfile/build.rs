@@ -168,15 +168,19 @@ impl Lockfile {
         let _ = fs::remove_dir_all(installroot.join("var/cache"));
         let _ = fs::remove_dir_all(installroot.join("var/tmp"));
         let _ = fs::remove_dir_all(installroot.join("var/lib/dnf/"));
-        let _ = fs::remove_file(installroot.join("var/lib/rpm/.rpm.lock"));
-        let sqlite_shm = installroot.join("var/lib/rpm/rpmdb.sqlite-shm");
+
         // rpm configures sqlite to persist the WAL and SHM files: https://github.com/rpm-software-management/rpm/blob/1cd9f9077a2829c363a198e5af56c8a56c6bc346/lib/backend/sqlite.c#L174C35-L174C59
         // this is a source of non-determinism, so we disable it here (should rpm need to be run against this db, it will re-create the journaling files)
-        // This obviously only helps if RPM uses sqlite for the database and stores it in /var/lib/rpm
-        if sqlite_shm.exists() {
-            disable_sqlite_journaling(&installroot.join("var/lib/rpm/rpmdb.sqlite"))
-                .context("Failed to disable sqlite journaling of RPM db")?;
+        let legacy_rpmdb = installroot.join("var/lib/rpm/rpmdb.sqlite");
+        let rpmdb = installroot.join("usr/lib/sysimage/rpm/rpmdb.sqlite");
+        if rpmdb.exists() {
+            disable_sqlite_journaling(&rpmdb)
+        } else if legacy_rpmdb.exists() {
+            disable_sqlite_journaling(&legacy_rpmdb)
+        } else {
+            Ok(())
         }
+        .context("Failed to disable sqlite journaling of RPM db")?;
         Ok(())
     }
 }
@@ -195,7 +199,11 @@ fn creation_time() -> Result<DateTime<chrono::Utc>, anyhow::Error> {
 }
 
 fn disable_sqlite_journaling(path: &Path) -> Result<()> {
-    let conn = Connection::open(path)?;
-    conn.pragma_update(None, "journal_mode", "DELETE")?;
+    let shm_path = path.with_extension("sqlite-shm");
+    if shm_path.exists() {
+        let conn = Connection::open(path)?;
+        conn.pragma_update(None, "journal_mode", "DELETE")?;
+    }
+
     Ok(())
 }
