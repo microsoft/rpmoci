@@ -22,9 +22,9 @@ use std::{
 };
 
 use anyhow::{bail, Context};
-mod archive;
 pub mod cli;
 pub mod config;
+pub mod imager;
 pub mod lockfile;
 pub mod subid;
 pub mod write;

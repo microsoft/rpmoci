@@ -17,22 +17,15 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::{fs, process::Command};
 
+use super::Lockfile;
+use crate::config::Config;
+use crate::imager;
+use crate::write;
 use anyhow::{bail, Context, Result};
 use chrono::DateTime;
-use flate2::Compression;
 use glob::glob;
-use ocidir::oci_spec::image::MediaType;
-use ocidir::{new_empty_manifest, OciDir};
 use rusqlite::Connection;
 use tempfile::TempDir;
-
-use super::Lockfile;
-use crate::archive::append_dir_all_with_xattrs;
-use crate::config::Config;
-use crate::write;
-use ocidir::cap_std::fs::Dir;
-
-const CREATED_BY: &str = "Created by rpmoci";
 
 impl Lockfile {
     /// Build a container image from a lockfile
@@ -44,15 +37,19 @@ impl Lockfile {
         vendor_dir: Option<&Path>,
         labels: HashMap<String, String>,
     ) -> Result<()> {
-        // Ensure OCI directory exists
-        fs::create_dir_all(image)
-            .context(format!("Failed to create OCI image directory `{}`", &image))?;
-        let dir = Dir::open_ambient_dir(image, ocidir::cap_std::ambient_authority())
-            .context("Failed to open image directory")?;
-        let oci_dir = OciDir::ensure(&dir)?;
-
         let creation_time = creation_time()?;
-        let installroot = TempDir::new()?; // This needs to outlive the layer builder below.
+        let installroot = TempDir::new()?; // This needs to outlive the image builder below.
+        let image_config = cfg
+            .image
+            .to_oci_image_configuration(labels, creation_time)?;
+
+        // Create the image writer early to ensure the image directory is created successfully
+        let image_builder = imager::Imager::with_paths(installroot.path(), image)?
+            .creation_time(creation_time)
+            .config(image_config)
+            .tag(tag)
+            .build();
+
         if let Some(vendor_dir) = vendor_dir {
             // Use vendored RPMs rather than downloading
             self.create_installroot(installroot.path(), vendor_dir, false, cfg, &creation_time)
@@ -69,39 +66,8 @@ impl Lockfile {
         }
         .context("Failed to create installroot")?;
 
-        // Create the root filesystem layer
-        write::ok("Creating", "root filesystem layer")?;
-        let mut builder = oci_dir.create_layer(Compression::fast().into())?;
-        builder.follow_symlinks(false);
-        append_dir_all_with_xattrs(&mut builder, installroot.path(), creation_time.timestamp())
-            .context("failed to archive root filesystem")?;
-        let layer = builder.into_inner()?.complete()?;
+        image_builder.create_image()?;
 
-        // Create the image configuration blob
-        write::ok("Writing", "image configuration blob")?;
-        let mut image_config = cfg
-            .image
-            .to_oci_image_configuration(labels, creation_time)?;
-        // Create the image manifest
-        let mut manifest = new_empty_manifest()
-            .media_type(MediaType::ImageManifest)
-            .build()?;
-        oci_dir.push_layer_full(
-            &mut manifest,
-            &mut image_config,
-            layer,
-            Option::<HashMap<String, String>>::None,
-            CREATED_BY,
-            creation_time,
-        );
-
-        write::ok("Writing", "image manifest and config")?;
-        oci_dir.insert_manifest_and_config(
-            manifest,
-            image_config,
-            Some(tag),
-            ocidir::oci_spec::image::Platform::default(),
-        )?;
         Ok(())
     }
 
