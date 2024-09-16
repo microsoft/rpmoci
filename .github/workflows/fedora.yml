@@ -15,4 +15,4 @@ jobs:
           dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
           dnf install -y docker-ce-cli
       - uses: actions/checkout@v2
-      - uses:  ./.github/actions/test.yml
+      - uses:  ./.github/actions/test

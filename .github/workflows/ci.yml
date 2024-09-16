@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: unset HOME; tdnf install -y build-essential git openssl-devel python3-devel sudo ca-certificates dnf moby-cli skopeo shadow-utils sqlite-devel
       - uses: actions/checkout@v2
-      - uses:  ./.github/actions/test.yml
+      - uses:  ./.github/actions/test
 
   cargo-deny:
     runs-on: ubuntu-24.04
