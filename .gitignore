@@ -3,3 +3,4 @@ tests/**/out
 out/
 vendor/
 tests/**/rpmoci.lock
+__pycache__
