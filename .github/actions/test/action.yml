@@ -3,11 +3,6 @@ description: "Run rpmoci tests"
 runs:
   using: "composite"
   steps:
-    - uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        override: true
     - name: Setup rootless user
       shell: bash
       run: |
