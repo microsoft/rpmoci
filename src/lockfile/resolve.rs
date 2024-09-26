@@ -217,7 +217,7 @@ pub(crate) fn setup_base<'a>(
     let conf = base.getattr("conf")?;
 
     // To support running in a user namespace override the cache and log directories
-    // as dnf will choose a dnf only root can write to.
+    // as dnf will choose directories only root can write to.
     if let Some(cache_dir) = cache_dir() {
         conf.setattr("cachedir", &cache_dir)?;
         conf.setattr("logdir", &cache_dir)?;
