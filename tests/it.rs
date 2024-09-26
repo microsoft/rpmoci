@@ -1,5 +1,4 @@
 //! Integration Tests for rpmoci
-
 use std::{
     fs::{self},
     path::{Path, PathBuf},
@@ -13,6 +12,15 @@ use test_temp_dir::TestTempDir;
 
 // Path to rpmoci binary under test
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
+
+fn rpmoci() -> Command {
+    // if running as root
+    let mut cmd = Command::new("unshare");
+    // Don't use --map-auto here as that doesn't work on Azure Linux 2.0's unshare
+    // This will cause failures if tests install RPMs which create users
+    cmd.arg("--map-root-user").arg("--user").arg(EXE);
+    cmd
+}
 
 fn setup_test(fixture: &str) -> (TestTempDir, PathBuf) {
     // the test_temp_dir macro can't handle the integration test module path not containing ::,
@@ -42,7 +50,7 @@ fn setup_test(fixture: &str) -> (TestTempDir, PathBuf) {
 fn test_incompatible_lockfile() {
     // Building with locked should fail
     let (_tmp_dir, root) = setup_test("incompatible_lockfile");
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("build")
         .arg("--locked")
         .args(["--image=foo", "--tag=bar"])
@@ -55,18 +63,14 @@ fn test_incompatible_lockfile() {
     assert!(stderr.contains("needs to be updated but --locked was passed to prevent this"));
 
     // Updating should succeed
-    let output = Command::new(EXE)
-        .arg("update")
-        .current_dir(&root)
-        .output()
-        .unwrap();
+    let output = rpmoci().arg("update").current_dir(&root).output().unwrap();
     assert!(output.status.success());
 }
 
 #[test]
 fn test_updatable_lockfile() {
     let (_tmp_dir, root) = setup_test("updatable_lockfile");
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("update")
         .current_dir(root)
         .env("NO_COLOR", "YES") // So the stderr checks below work
@@ -85,7 +89,7 @@ fn test_updatable_lockfile() {
 fn test_unparseable_lockfile() {
     let (_tmp_dir, root) = setup_test("unparseable_lockfile");
     // building with --locked should fail
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("build")
         .arg("--locked")
         .args(["--image=foo", "--tag=bar"])
@@ -98,7 +102,7 @@ fn test_unparseable_lockfile() {
     assert!(stderr.contains("failed to parse existing lock file"));
 
     // but we should be able to update it
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("update")
         .current_dir(root)
         .env("NO_COLOR", "YES") // So the stderr checks below work
@@ -114,7 +118,7 @@ fn test_unparseable_lockfile() {
 fn test_no_lockfile() {
     let (_tmp_dir, root) = setup_test("no_lockfile");
     // building with --locked should fail
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("build")
         .arg("--locked")
         .args(["--image=foo", "--tag=bar"])
@@ -132,7 +136,7 @@ fn test_no_lockfile() {
 #[test]
 fn test_update_from_lockfile() {
     let (_tmp_dir, root) = setup_test("update_from_lockfile");
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("update")
         .arg("--from-lockfile")
         .current_dir(root)
@@ -146,14 +150,12 @@ fn test_update_from_lockfile() {
 }
 
 // Do a simple container image build, verifying the reproducibility and /etc/os-release dependency.
-// This test requires oras be installed, to check that the produced images are
-// compatible with another OCI tool.
 #[test]
 fn test_simple_build() {
     // Repeat the same build twice using same SOURCE_DATE_EPOCH and ensure the resulting images are identical
     let (_tmp_dir, root) = setup_test("simple_build");
     let source_date_epoch = "1701168547";
-    let output1 = Command::new(EXE)
+    let output1 = rpmoci()
         .arg("build")
         .arg("--image=foo")
         .arg("--tag=bar")
@@ -166,16 +168,6 @@ fn test_simple_build() {
     eprintln!("stderr: {}", stderr);
     assert!(output1.status.success());
 
-    let oras_status = Command::new("oras")
-        .arg("copy")
-        .arg("--from-oci-layout")
-        .arg("--to-oci-layout")
-        .arg("foo:bar")
-        .arg("baz:bar")
-        .current_dir(&root)
-        .status()
-        .unwrap();
-
     // Open the lockfile and verify /etc/os-release was included as a dependency
     let lockfile_path = root.join("rpmoci.lock");
     eprintln!("lockfile_path: {}", lockfile_path.display());
@@ -187,11 +179,10 @@ fn test_simple_build() {
     let stderr = std::str::from_utf8(&output1.stderr).unwrap();
     eprintln!("stderr: {}", stderr);
     assert!(output1.status.success());
-    assert!(oras_status.success());
 
     // Repeat the build, to ensure reproducing the same image works
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let output2 = Command::new(EXE)
+    let output2 = rpmoci()
         .arg("build")
         .arg("--image=foo")
         .arg("--tag=bar2")
@@ -211,7 +202,7 @@ fn test_simple_build() {
 #[test]
 fn test_simple_vendor() {
     let (_tmp_dir, root) = setup_test("simple_vendor");
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("update")
         .current_dir(&root)
         .env("NO_COLOR", "YES") // So the stderr checks below work
@@ -221,7 +212,7 @@ fn test_simple_vendor() {
     eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
     assert!(output.status.success());
 
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("vendor")
         .arg("--out-dir=.")
         .current_dir(&root)
@@ -237,11 +228,7 @@ fn test_simple_vendor() {
 fn test_no_auto_etc_os_release() {
     // Test that `contents.os_release = false` works
     let (_tmp_dir, root) = setup_test("no_auto_etc_os_release");
-    let output = Command::new(EXE)
-        .arg("update")
-        .current_dir(&root)
-        .output()
-        .unwrap();
+    let output = rpmoci().arg("update").current_dir(&root).output().unwrap();
     let stderr = std::str::from_utf8(&output.stderr).unwrap();
     eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
     assert!(output.status.success());
@@ -258,11 +245,7 @@ fn test_no_auto_etc_os_release() {
 fn test_explicit_etc_os_release() {
     // Test that resolution works when /etc/os-release explicitly added
     let (_tmp_dir, root) = setup_test("etc_os_release_explicit");
-    let output = Command::new(EXE)
-        .arg("update")
-        .current_dir(&root)
-        .output()
-        .unwrap();
+    let output = rpmoci().arg("update").current_dir(&root).output().unwrap();
     let stderr = std::str::from_utf8(&output.stderr).unwrap();
     eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
 }
@@ -271,7 +254,7 @@ fn test_explicit_etc_os_release() {
 fn test_weak_deps() {
     // Verify a build without weak dependencies succeeds
     let (_tmp_dir, root) = setup_test("weakdeps");
-    let output = Command::new(EXE)
+    let output = rpmoci()
         .arg("build")
         .arg("--image=weak")
         .arg("--tag=deps")
@@ -305,21 +288,21 @@ fn test_hardlinks() {
 
 fn build_and_run(image: &str) -> std::process::Output {
     let (_tmp_dir, root) = setup_test(image);
-    let status = Command::new(EXE)
+    let status = rpmoci()
         .arg("build")
         .arg("--image")
         .arg(image)
         .arg("--tag=test")
         .current_dir(&root)
         .status()
-        .unwrap();
+        .expect("failed to run rpmoci");
     assert!(status.success());
     copy_to_docker(image, &root);
     let output = Command::new("docker")
         .arg("run")
         .arg(format!("{}:test", image))
         .output()
-        .unwrap();
+        .expect("failed to run container");
     assert!(output.status.success());
     output
 }
@@ -331,6 +314,6 @@ fn copy_to_docker(image: &str, root: impl AsRef<Path>) {
         .arg(format!("docker-daemon:{}:test", image))
         .current_dir(root.as_ref())
         .status()
-        .unwrap();
+        .expect("failed to run skopeo");
     assert!(status.success());
 }

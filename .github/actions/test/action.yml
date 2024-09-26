@@ -1,0 +1,14 @@
+name: "rpmoci tests"
+description: "Run rpmoci tests"
+runs:
+  using: "composite"
+  steps:
+    - name: Setup rootless user
+      shell: bash
+      run: |
+        useradd -m -s /bin/bash rootless
+    - name: Run tests as non-root user
+      shell: bash
+      run: |
+        su - rootless
+        cargo test --features test-docker
