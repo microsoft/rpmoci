@@ -73,7 +73,7 @@ pub(super) fn append_dir_all_with_xattrs(
 
             // If this is a hardlink, add a link header instead of the file
             // if this isn't the first time we've seen this inode
-            if meta.nlink() > 1 {
+            if entry.file_type().is_file() && meta.nlink() > 1 {
                 match hardlinks.entry((meta.dev(), meta.ino())) {
                     Entry::Occupied(e) => {
                         // Add link header and continue to next entry
@@ -82,6 +82,7 @@ pub(super) fn append_dir_all_with_xattrs(
                         if meta.mtime() > clamp_mtime {
                             header.set_mtime(clamp_mtime as u64);
                         }
+                        header.set_size(0);
                         header.set_entry_type(tar::EntryType::Link);
                         header.set_cksum();
                         builder.append_link(&mut header, &rel_path, e.get())?;

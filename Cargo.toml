@@ -37,6 +37,11 @@ ocidir = "0.2.1"
 
 [dev-dependencies]
 test-temp-dir = "0.2.2"
+testcontainers = { version = "0.23.1", features = ["blocking"] }
+testcontainers-modules = { version = "0.11.2", features = [
+    "cncf_distribution",
+] }
+
 
 [package.metadata.generate-rpm]
 assets = [
