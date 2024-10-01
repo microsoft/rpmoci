@@ -9,6 +9,8 @@ use rpmoci::lockfile::Lockfile;
 
 use ocidir::oci_spec::image::ImageIndex;
 use test_temp_dir::TestTempDir;
+use testcontainers::runners::SyncRunner;
+use testcontainers_modules::cncf_distribution::CncfDistribution;
 
 // Path to rpmoci binary under test
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
@@ -284,6 +286,26 @@ fn test_hardlinks() {
     let stderr = std::str::from_utf8(&output.stderr).unwrap();
     eprintln!("stderr: {}", stderr);
     assert_eq!(std::str::from_utf8(&output.stdout).unwrap().trim(), "2");
+
+    // Test we can push the image to a registry
+    let distribution_node = CncfDistribution::default().start().unwrap();
+    let push_image = format!(
+        "localhost:{}/hardlinks:test",
+        distribution_node.get_host_port_ipv4(5000).unwrap(),
+    );
+    let status = Command::new("docker")
+        .arg("tag")
+        .arg("hardlinks:test")
+        .arg(&push_image)
+        .status()
+        .expect("failed to run container");
+    assert!(status.success());
+    let status = Command::new("docker")
+        .arg("push")
+        .arg(&push_image)
+        .status()
+        .expect("failed to push image to registry");
+    assert!(status.success());
 }
 
 fn build_and_run(image: &str) -> std::process::Output {
