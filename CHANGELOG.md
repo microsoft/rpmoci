@@ -2,6 +2,18 @@
 ### Added
 ### Fixed
 
+## 0.4.0 - 2024-10-02
+### Breaking Changes
+- Remove rootless support in favour of documenting how to use `unshare` to run in a user namespace.
+
+### Added
+- Support for distros that have RPM db in /usr/lib/sysimage/rpm
+
+### Fixed
+- Set size in hardlink headers correctly.
+  - Fixes integrity failures during this `docker push` 
+
+
 ## 0.3.1 - 2024-07-24
 ### Fixed
 - Preserve hardlinks rather than copying files when building images.
