@@ -34,7 +34,6 @@ use walkdir::WalkDir;
 
 mod archive;
 mod layer;
-mod sha256_writer;
 
 const CREATED_BY: &str = "Created by rpmoci";
 
@@ -148,7 +147,7 @@ impl Imager {
         ))?;
         let dir = Dir::open_ambient_dir(oci_dir, ocidir::cap_std::ambient_authority())
             .context("Failed to open image directory")?;
-        let oci_dir = OciDir::ensure(&dir)?;
+        let oci_dir = OciDir::ensure(dir)?;
 
         Ok(ImagerBuilder {
             filesystem_root: Some(filesystem_root),
