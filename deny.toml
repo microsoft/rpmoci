@@ -10,5 +10,6 @@ allow = [
     "Unicode-DFS-2016",
     "GPL-3.0",
     "BSD-3-Clause",
+    "Unicode-3.0",
 ]
 confidence-threshold = 1.0
