@@ -19,6 +19,7 @@ use std::path::Path;
 use std::{io::Write, process::Command};
 
 use anyhow::{bail, Context, Result};
+use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use tempfile::{tempdir, TempDir};
@@ -35,8 +36,12 @@ impl Lockfile {
 
         Python::with_gil(|py| {
             let base = setup_base(py, repositories, &cfg.contents.gpgkeys)?;
-            let download =
-                PyModule::from_code_bound(py, include_str!("download.py"), "resolve", "resolve")?;
+            let download = PyModule::from_code(
+                py,
+                c_str!(include_str!("download.py")),
+                c_str!("resolve"),
+                c_str!("resolve"),
+            )?;
 
             let packages = self
                 .packages
@@ -44,14 +49,14 @@ impl Lockfile {
                 .map(|p| (p.name.clone(), p.evr.clone(), p.checksum.checksum.clone()))
                 .collect::<Vec<_>>();
 
-            let args = PyTuple::new_bound(
+            let args = PyTuple::new(
                 py,
-                &[
-                    base.to_object(py),
-                    packages.to_object(py),
-                    dir.to_object(py),
+                [
+                    base.as_any(),
+                    packages.into_pyobject(py)?.as_any(),
+                    dir.into_pyobject(py)?.as_any(),
                 ],
-            );
+            )?;
             // Run the download function
             download.getattr("download")?.call1(args)?;
             Ok::<_, anyhow::Error>(())
