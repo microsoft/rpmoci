@@ -16,12 +16,18 @@ use testcontainers_modules::cncf_distribution::CncfDistribution;
 const EXE: &str = env!("CARGO_BIN_EXE_rpmoci");
 
 fn rpmoci() -> Command {
-    // if running as root
-    let mut cmd = Command::new("unshare");
-    // Don't use --map-auto here as that doesn't work on Azure Linux 2.0's unshare
-    // This will cause failures if tests install RPMs which create users
-    cmd.arg("--map-root-user").arg("--user").arg(EXE);
-    cmd
+    // if running as root, don't unshare
+    let is_root = unsafe { libc::geteuid() == 0 };
+    if is_root {
+        Command::new(EXE)
+    } else {
+        // Run in user namespace
+        let mut cmd = Command::new("unshare");
+        // Don't use --map-auto here as that doesn't work on Azure Linux 2.0's unshare
+        // This will cause failures if tests install RPMs which create users
+        cmd.arg("--map-root-user").arg("--user").arg(EXE);
+        cmd
+    }
 }
 
 fn setup_test(fixture: &str) -> (TestTempDir, PathBuf) {
@@ -250,20 +256,46 @@ fn test_explicit_etc_os_release() {
     let output = rpmoci().arg("update").current_dir(&root).output().unwrap();
     let stderr = std::str::from_utf8(&output.stderr).unwrap();
     eprintln!("stderr: {}. {}. {}", stderr, root.display(), EXE);
+    assert!(output.status.success());
+    // Open the lockfile and verify /etc/os-release was added as a dependency
+    let lockfile_path = root.join("rpmoci.lock");
+    eprintln!("lockfile_path: {}", lockfile_path.display());
+    let lockfile: Lockfile = toml::from_str(&fs::read_to_string(lockfile_path).unwrap()).unwrap();
+    assert_eq!(
+        lockfile
+            .iter_packages()
+            .filter(|p| p.name == "mariner-release")
+            .count(),
+        1
+    );
 }
 
 #[test]
 fn test_weak_deps() {
     // Verify a build without weak dependencies succeeds
     let (_tmp_dir, root) = setup_test("weakdeps");
-    let output = rpmoci()
+    let status = rpmoci()
         .arg("build")
         .arg("--image=weak")
         .arg("--tag=deps")
         .current_dir(&root)
-        .output()
+        .status()
         .unwrap();
-    assert!(output.status.success());
+    assert!(status.success());
+}
+
+#[test]
+fn test_base_arch() {
+    // Verify a build using a repo with a $basearch variable in the URL succeeds
+    let (_tmp_dir, root) = setup_test("basearch");
+    let status = rpmoci()
+        .arg("build")
+        .arg("--image=base")
+        .arg("--tag=arch")
+        .current_dir(&root)
+        .status()
+        .unwrap();
+    assert!(status.success());
 }
 
 #[cfg(feature = "test-docker")]
