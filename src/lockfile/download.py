@@ -1,4 +1,5 @@
 """RPM downloader module."""
+
 # Copyright (C) Microsoft Corporation.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -37,6 +38,10 @@ def download(base, packages, directory):
 def get_package(base, name, evr, checksum):
     """Find packages matching given spec."""
     pkgs = base.sack.query().filter(name=name, evr=evr).run()
+    # Filter by checksum manually as hawkey does not support it
+    # This also ensures that we get the package for the correct arch
+    # in case $basearch is used in the URL.
+    pkgs = [p for p in pkgs if p.chksum and p.chksum[1].hex() == checksum]
 
     if not pkgs:
         msg = (
