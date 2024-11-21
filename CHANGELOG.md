@@ -2,6 +2,11 @@
 ### Added
 ### Fixed
 
+## 0.4.1 - 2024-11-21
+
+### Fixed
+- Fix builds with repositories that use `$basearch` in their URLs, e.g RHEL UBI images.
+
 ## 0.4.0 - 2024-10-02
 ### Breaking Changes
 - Remove rootless support in favour of documenting how to use `unshare` to run in a user namespace.
